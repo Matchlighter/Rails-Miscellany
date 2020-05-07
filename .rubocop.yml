@@ -1,0 +1,56 @@
+AllCops:
+  TargetRubyVersion: 2.5
+  Exclude:
+    - '**/vendor/**/*'
+    - '**/vendor/**/.*'
+    - '**/node_modules/**/*'
+    - 'db/schema.rb'
+    - 'config/development-local.rb'
+    - 'bin/**/*'
+    - 'Gemfile'
+    - 'Gemfile.lock'
+    - 'config/**/*'
+    - 'spec/spec_helper.rb'
+    - 'spec/rails_helper.rb'
+    - 'config.ru'
+    - 'db/migrate/**/*'
+    - 'Rakefile'
+    - 'spec/**/*'
+    - '*.gemspec'
+Metrics/LineLength:
+  Max: 130
+Metrics/MethodLength:
+  Enabled: false
+Style/Documentation:
+  Enabled: false
+Metrics/BlockLength:
+  Exclude:
+    - 'spec/**/*'
+Style/FrozenStringLiteralComment:
+  Enabled: false
+Style/SymbolArray:
+  Enabled: false
+Style/StringLiterals:
+  Enabled: true
+  EnforcedStyle: double_quotes
+Style/TrailingCommaInArguments:
+  Enabled: true
+  EnforcedStyleForMultiline: comma
+Style/TrailingCommaInLiteral:
+  Enabled: true
+  EnforcedStyleForMultiline: comma
+Layout/EmptyLines:
+  Enabled: false
+Layout/SpaceAroundEqualsInParameterDefault:
+  Enabled: false
+Style/NumericPredicate:
+  Enabled: false
+Style/DateTime:
+  Enabled: false
+Metrics/ParameterLists:
+  Enabled: true
+  Max: 6
+Metrics/AbcSize:
+  Enabled: false
+Metrics/ModuleLength:
+  Enabled: false
