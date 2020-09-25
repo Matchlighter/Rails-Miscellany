@@ -3,7 +3,7 @@ lib = File.expand_path("../lib", __FILE__)
 $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
 
 begin
-  require "canvas_sync/version"
+  require "advanced_ar/version"
   VERSION = AdvancedAR::VERSION
 rescue LoadError
   VERSION = "0.0.0.docker"
@@ -18,7 +18,7 @@ Gem::Specification.new do |spec|
   spec.summary       = "Gem for adding advanced features into ActiveRecord"
   spec.homepage      = "https://instructure.com"
 
-  spec.files         = Dir.glob('{db,config,app,lib,spec}/**/*') + %w(README.md Rakefile)
+  spec.files         = Dir.glob('{db,config,app,lib,spec}/**/*') + %w(README.md)
   spec.test_files    = spec.files.grep(%r{^(test|spec|features)/})
   spec.require_paths = ['lib']
 

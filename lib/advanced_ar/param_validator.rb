@@ -200,10 +200,10 @@ module AdvancedAR
 
         if result.present? && result != true
           result = options[:message] if options&.[](:message).present?
-          Array(result).each { |e| @errors << e }
+          Array(result).each do |e|
+            @errors << e
+          end
         end
-
-        next if @errors.nil?
 
         state[check] = merge_error_hashes(state[check], @errors)
         @errors = initial_errors

@@ -17,12 +17,14 @@
 module AdvancedAR::ArbitraryPrefetch
   class PrefetcherContext
     attr_accessor :model, :target_attribute
+    attr_reader :options
 
-    def initialize(model, source, attrribute, queryset)
+    def initialize(model, opts)
+      @options = opts
       @model = model
-      @source_key = source
-      @target_attribute = attrribute
-      @queryset = queryset
+      @source_key = opts[:relation]
+      @target_attribute = opts[:attribute]
+      @queryset = opts[:queryset]
       @models = []
     end
 
@@ -52,7 +54,7 @@ module AdvancedAR::ArbitraryPrefetch
           qs
         }
         ActiveRecord::Reflection.create(
-          :has_many,
+          options[:type],
           @target_attribute,
           scope,
           source_refl.options.merge(
@@ -79,12 +81,18 @@ module AdvancedAR::ArbitraryPrefetch
     def exec_queries
       return super if loaded?
 
-      models = super
+      records = super
+      preloader = nil
       (@values[:prefetches] || {}).each do |_key, opts|
-        pfc = PrefetcherContext.new(model, opts[:relation], opts[:attribute], opts[:queryset])
-        pfc.link_models(models)
+        pfc = PrefetcherContext.new(model, opts)
+        pfc.link_models(records)
+
+        unless defined?(Goldiloader)
+          preloader ||= build_preloader
+          preloader.preload(records, opts[:attribute])
+        end
       end
-      models
+      records
     end
 
     def prefetch(**kwargs)
@@ -97,23 +105,26 @@ module AdvancedAR::ArbitraryPrefetch
       assert_mutability!
       @values[:prefetches] ||= {}
       kwargs.each do |attr, opts|
-        @values[:prefetches][attr] = normalize_options(opts).merge(
-          attribute: attr
-        )
+        @values[:prefetches][attr] = normalize_options(attr, opts)
       end
       self
     end
 
-    def normalize_options(opts)
-      if opts.is_a?(Array)
-        { relation: opts[0], queryset: opts[1] }
-      elsif opts.is_a?(ActiveRecord::Relation)
-        rel_name = opts.model.name.underscore
-        rel = (model.reflections[rel_name] || model.reflections[rel_name.pluralize])&.name
-        { relation: rel, queryset: opts }
-      else
-        opts
+    def normalize_options(attr, opts)
+      norm = if opts.is_a?(Array)
+          { relation: opts[0], queryset: opts[1] }
+        elsif opts.is_a?(ActiveRecord::Relation)
+          rel_name = opts.model.name.underscore
+          rel = (model.reflections[rel_name] || model.reflections[rel_name.pluralize])&.name
+          { relation: rel, queryset: opts }
+        else
+          opts
       end
+
+      norm[:attribute] = attr
+      norm[:type] ||= (attr.to_s.pluralize == attr.to_s) ? :has_many : :has_one
+
+      norm
     end
   end
 
