@@ -4,14 +4,14 @@ $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
 
 begin
   require "advanced_ar/version"
-  VERSION = AdvancedAR::VERSION
+  version = AdvancedAR::VERSION
 rescue LoadError
-  VERSION = "0.0.0.docker"
+  version = "0.0.0.docker"
 end
 
 Gem::Specification.new do |spec|
   spec.name          = "advanced_ar"
-  spec.version       = VERSION
+  spec.version       = version
   spec.authors       = ["Ethan Knapp"]
   spec.email         = ["eknapp@instructure.com"]
 

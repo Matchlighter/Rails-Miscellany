@@ -13,6 +13,14 @@ module AdvancedAR
     ALL_PREFIXES = (PREFIXES + PREFIX_ALIASES.keys).freeze
     VALID_FLAGS = %i[present specified].freeze
 
+    def self.record_type(model, key: :id)
+      Proc.new do |param, *args|
+        model.find_by!(key => param)
+      rescue ActiveRecord::RecordNotFound
+        raise ArgumentError
+      end
+    end
+
     def initialize(block, context, parameters = nil, options = nil)
       @block = block
       @context = context
@@ -228,6 +236,12 @@ module AdvancedAR
 
     def coerce_single_type(param, type, options)
       return param if (param.is_a?(type) rescue false)
+
+      if type.is_a?(Class) && type <= ActiveRecord::Base
+        type = self.class.record_type(type)
+      end
+
+      return type.call(param, options) if type.is_a?(Proc)
 
       if (param.is_a?(Array) && type != Array) || ((param.is_a?(Hash) || param.is_a?(ActionController::Parameters)) && type != Hash)
         raise ArgumentError
