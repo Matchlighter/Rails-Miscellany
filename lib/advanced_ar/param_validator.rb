@@ -7,7 +7,7 @@ module AdvancedAR
     TIME_TYPES = [Date, DateTime, Time].freeze
 
     CHECKS = %i[type specified present default transform in block items pattern].freeze
-    NON_PREFIXED = %i[default transform type message].freeze
+    NON_PREFIXED = %i[default transform type message timezone].freeze
     PREFIXES = %i[all onem onep one none].freeze
     PREFIX_ALIASES = { any: :onep, not: :none }.freeze
     ALL_PREFIXES = (PREFIXES + PREFIX_ALIASES.keys).freeze
@@ -256,10 +256,17 @@ module AdvancedAR
 
       # Date/Time
       if TIME_TYPES.include? type
-        if options[:format].present?
-          return type.strptime(param, options[:format])
+        if tz = options[:timezone]
+          tz = ActiveSupport::TimeZone[tz] if tz.is_a?(String)
+          dt = options[:format].present? ? tz.strptime(param, options[:format]) : tz.parse(param)
+          dt = dt.to_date if type == Date
+          return dt
         else
-          return type.parse(param)
+          if options[:format].present?
+            return type.strptime(param, options[:format])
+          else
+            return type.parse(param)
+          end
         end
       end
 
