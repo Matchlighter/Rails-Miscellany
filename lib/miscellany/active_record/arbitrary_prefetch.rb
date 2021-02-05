@@ -14,7 +14,7 @@
 #     2. Duplicates the relevant snippets from Goldiloader into this module. See Goldiloader::AutoIncludeContext
 #   The current Goldiloader implementation uses Option 1 internally, but also makes the relations lazy - even
 #     if you define a prefetch, it won't actually be loaded until you attempt to access it on one of the models.
-module AdvancedAR
+module Miscellany
   module ArbitraryPrefetch
     class PrefetcherContext
       attr_accessor :model, :target_attribute

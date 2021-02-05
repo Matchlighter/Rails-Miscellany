@@ -1,4 +1,4 @@
-module AdvancedAR
+module Miscellany
   class BatchingCsvProcessor
     attr_accessor :csv, :file_name
 

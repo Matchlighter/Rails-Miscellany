@@ -3,19 +3,19 @@ lib = File.expand_path("../lib", __FILE__)
 $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
 
 begin
-  require "advanced_ar/version"
-  version = AdvancedAR::VERSION
+  require "miscellany/version"
+  version = Miscellany::VERSION
 rescue LoadError
   version = "0.0.0.docker"
 end
 
 Gem::Specification.new do |spec|
-  spec.name          = "advanced_ar"
+  spec.name          = "miscellany"
   spec.version       = version
   spec.authors       = ["Ethan Knapp"]
   spec.email         = ["eknapp@instructure.com"]
 
-  spec.summary       = "Gem for adding advanced features into ActiveRecord"
+  spec.summary       = "Gem for a bunch of random, re-usable Rails Concerns & Helpers"
   spec.homepage      = "https://instructure.com"
 
   spec.files = Dir["{app,config,db,lib}/**/*", "README.md", "*.gemspec"]
@@ -28,7 +28,7 @@ Gem::Specification.new do |spec|
   spec.add_development_dependency "rspec-rails"
   spec.add_development_dependency "pg"
   spec.add_development_dependency "factory"
-  spec.add_development_dependency "factory_girl_rails"
+  spec.add_development_dependency "factory_bot"
   spec.add_development_dependency "timecop"
   spec.add_development_dependency "webmock"
   spec.add_development_dependency "sinatra", ">= 0"

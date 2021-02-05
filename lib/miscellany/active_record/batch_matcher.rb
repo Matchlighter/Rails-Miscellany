@@ -1,4 +1,4 @@
-module AdvancedAR
+module Miscellany
   # Matches a set of rows (eg from a CSV) against Rows in the Database.
   #
   # Examples:

@@ -1,4 +1,4 @@
-module AdvancedAR
+module Miscellany
   # An array that "processes" after so many items are added.
   #
   # Example Usage:

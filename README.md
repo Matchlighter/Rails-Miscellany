@@ -1,3 +1,3 @@
-# AdvancedAR
+# Miscellany
 
-Gem for adding advanced features into ActiveRecord.
+Gem for a bunch of random, re-usable Rails Concerns & Helpers.

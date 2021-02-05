@@ -29,7 +29,7 @@
 #   end
 # end
 #
-module AdvancedAR
+module Miscellany
   module CustomPreloaders
     module AssociationBuilderExtension
       def self.build(model, reflection); end

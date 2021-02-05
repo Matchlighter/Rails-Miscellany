@@ -1,4 +1,4 @@
-module AdvancedAR
+module Miscellany
   module BatchedDestruction
     extend ActiveSupport::Concern
 

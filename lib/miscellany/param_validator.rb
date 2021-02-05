@@ -1,4 +1,4 @@
-module AdvancedAR
+module Miscellany
   class ParamValidator
     attr_accessor :context, :options, :errors
 
