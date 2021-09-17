@@ -9,7 +9,7 @@ module Miscellany
     CHECKS = %i[type specified present default transform in block items pattern].freeze
     NON_PREFIXED = %i[default transform type message timezone].freeze
     PREFIXES = %i[all onem onep one none].freeze
-    PREFIX_ALIASES = { any: :onep, not: :none }.freeze
+    PREFIX_ALIASES = { any: :onep, not: :none, one_or_less: :onem, one_or_more: :onem }.freeze
     ALL_PREFIXES = (PREFIXES + PREFIX_ALIASES.keys).freeze
     VALID_FLAGS = %i[present specified].freeze
 
@@ -107,25 +107,36 @@ module Miscellany
 
         # Nested check
         run_check[:block] do |blk|
-          iterate_array = false # TODO
           sub_parameter(pk) do
-            if params.is_a?(Array) && iterate_array
-              params.each_with_index do |v, i|
-                sub_parameter(i) { apply_checks(&blk) }
-              end
-            else
-              apply_checks(&blk)
-            end
+            apply_checks(&blk)
           end
         end
 
-        # Nested check
+        # Array Items check
         run_check[:items] do |blk|
           sub_parameter(pk) do
             if params.is_a?(Array)
+              error_items = 0
+
               params.each_with_index do |v, i|
-                sub_parameter(i) { apply_checks(&blk) }
+                cresult = {}
+                exec_check(cresult, :array_item) do
+                  sub_parameter(i) { apply_checks(&blk) }
+                end
+
+                cresult = cresult[:array_item]
+                merged = merge_error_hashes((check_results[:items] || {})[i], cresult)
+                if merged.present?
+                  error_items += 1
+                  if error_items > 5
+                    check_results[:items] = merge_error_hashes(check_results[:items], "Too Many Errors")
+                    break
+                  else
+                    check_results[:items] = merge_error_hashes(check_results[:items], { i => merged})
+                  end
+                end
               end
+              nil
             else
               raise "items: validator can only be used with Arrays"
             end
@@ -195,6 +206,7 @@ module Miscellany
       # TODO: Support Running checks of the same type for different prefixes
 
       check_prefixes = NON_PREFIXED.include?(check) ? [nil] : Array(checks_to_run&.[](check))
+      check_prefixes << '' if check == :array_item
       return true unless check_prefixes.present?
 
       check_prefixes.each do |check_prefix|
@@ -206,10 +218,10 @@ module Miscellany
         result = yield(*args)
         result = "failed validation #{check}" if result == false
 
-        if result.present? && result != true
+        if result.present? && result != true && result != @errors
           result = options[:message] if options&.[](:message).present?
           Array(result).each do |e|
-            @errors << e
+            @errors = merge_error_hashes(@errors, [e])
           end
         end
 
@@ -243,10 +255,11 @@ module Miscellany
 
       return type.call(param, options) if type.is_a?(Proc)
 
-      if (param.is_a?(Array) && type != Array) || ((param.is_a?(Hash) || param.is_a?(ActionController::Parameters)) && type != Hash)
+      is_rails_parameters = defined?(ActionController::Parameters) && param.is_a?(ActionController::Parameters)
+      if (param.is_a?(Array) && type != Array) || ((param.is_a?(Hash) || is_rails_parameters) && type != Hash)
         raise ArgumentError
       end
-      return param if (param.is_a?(ActionController::Parameters) && type == Hash rescue false)
+      return param if (is_rails_parameters && type == Hash rescue false)
 
       # Primitives
       return Integer(param) if type == Integer
@@ -374,7 +387,7 @@ module Miscellany
       skey = key.to_s
       ALL_PREFIXES.each do |pfx|
         spfx = pfx.to_s
-        next unless skey.starts_with?("#{spfx}_")
+        next unless skey.start_with?("#{spfx}_")
 
         return [skey[(spfx.length + 1)..-1].to_sym, PREFIX_ALIASES[pfx] || pfx]
       end

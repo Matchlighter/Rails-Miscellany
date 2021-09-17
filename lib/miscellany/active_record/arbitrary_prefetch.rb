@@ -111,12 +111,12 @@ module Miscellany
         assert_mutability!
         @values[:prefetches] ||= {}
         kwargs.each do |attr, opts|
-          @values[:prefetches][attr] = normalize_options(attr, opts)
+          @values[:prefetches][attr] = normalize_prefetch_options(attr, opts)
         end
         self
       end
 
-      def normalize_options(attr, opts)
+      def normalize_prefetch_options(attr, opts)
         norm = if opts.is_a?(Array)
             { relation: opts[0], queryset: opts[1] }
           elsif opts.is_a?(ActiveRecord::Relation)
@@ -155,7 +155,7 @@ module Miscellany
           records.each do |record|
             next unless record
             reflection = record.class._reflect_on_association(association)
-            reflection ||= record.association(association)&.reflection
+            reflection ||= record.association(association)&.reflection rescue nil
             next if polymorphic_parent && !reflection || !record.association(association).klass
             (h[reflection] ||= []) << record
           end

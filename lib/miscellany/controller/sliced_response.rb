@@ -86,7 +86,7 @@ module Miscellany
     def normalize_sort(sort, key: nil)
       sort = sort.to_s if sort.is_a?(Symbol)
       if sort.is_a?(String)
-        m = sort.match(/(\w+)(?: (ASC|DESC)(!?))?/)
+        m = sort.match(/^([\w\.]+)(?: (ASC|DESC)(!?))?$/)
         sort = { column: m[1], order: m[2], force_order: m[3].present? }.compact
       elsif sort.is_a?(Proc)
         sort = { column: sort }
@@ -215,12 +215,20 @@ module Miscellany
 
       def rendered_items
         ritems = sliced_items
-        ritems = ritems.map(&options[:item_transformer]) if options[:item_transformer]
+        ritems = ritems.to_a.map(&options[:item_transformer]) if options[:item_transformer]
         ritems
       end
 
       def total_item_count
-        @total_item_count ||= options[:total_count] || (items.respond_to?(:count) && items.count) || nil
+        @total_item_count ||= options[:total_count] || begin
+          if items.is_a?(ActiveRecord::Relation)
+            items.except(:select).count
+          elsif items.respond_to?(:count)
+            items.count
+          else
+            nil
+          end
+        end
       end
 
       def sliced_items
