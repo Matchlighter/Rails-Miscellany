@@ -16,6 +16,9 @@
 #     if you define a prefetch, it won't actually be loaded until you attempt to access it on one of the models.
 module Miscellany
   module ArbitraryPrefetch
+    ACTIVE_RECORD_VERSION = ::Gem::Version.new(::ActiveRecord::VERSION::STRING).release
+    PRE_RAILS_6_2 = ACTIVE_RECORD_VERSION < ::Gem::Version.new('6.2.0')
+
     class PrefetcherContext
       attr_accessor :model, :target_attribute
       attr_reader :options
@@ -49,7 +52,7 @@ module Miscellany
         @reflection ||= begin
           queryset = @queryset
           source_refl = model.reflections[@source_key.to_s]
-          scope = lambda { |*_args|
+          scope = lambda {|*_args|
             qs = queryset
             qs = qs.merge(source_refl.scope_for(model.unscoped)) if source_refl.scope
             qs
@@ -83,14 +86,16 @@ module Miscellany
         return super if loaded?
 
         records = super
-        preloader = nil
         (@values[:prefetches] || {}).each do |_key, opts|
           pfc = PrefetcherContext.new(model, opts)
           pfc.link_models(records)
 
           unless defined?(Goldiloader)
-            preloader ||= build_preloader
-            preloader.preload(records, opts[:attribute])
+            if PRE_RAILS_6_2
+              ::ActiveRecord::Associations::Preloader.new.preload(records, [opts[:attribute]])
+            else
+              ::ActiveRecord::Associations::Preloader.new(records: records, associations: [opts[:attribute]]).call
+            end
           end
         end
         records
@@ -143,15 +148,43 @@ module Miscellany
       end
     end
 
+    module ActiveRecordPreloaderPatch
+      if ACTIVE_RECORD_VERSION >= ::Gem::Version.new('6.0.0')
+        def grouped_records(association, records, polymorphic_parent)
+          h = {}
+          records.each do |record|
+            next unless record
+            reflection = record.class._reflect_on_association(association)
+            reflection ||= record.association(association)&.reflection
+            next if polymorphic_parent && !reflection || !record.association(association).klass
+            (h[reflection] ||= []) << record
+          end
+          h
+        end
+      end
+    end
+
+    module ActiveRecordReflectionPatch
+      def check_preloadable!
+        return if scope && scope.arity < 0
+        super
+      end
+    end
+
     def self.install
       ::ActiveRecord::Base.include(ActiveRecordBasePatch)
+
       ::ActiveRecord::Relation.prepend(ActiveRecordRelationPatch)
       ::ActiveRecord::Relation::Merger.prepend(ActiveRecordMergerPatch)
+
+      ::ActiveRecord::Associations::Preloader.prepend(ActiveRecordPreloaderPatch)
+
+      ::ActiveRecord::Reflection::AssociationReflection.prepend(ActiveRecordReflectionPatch)
 
       return unless defined? ::Goldiloader
 
       ::Goldiloader::AssociationLoader.module_eval do
-        def self.has_association?(model, association_name) # rubocop:disable Naming/PredicateName
+        def self.has_association?(model, association_name)
           model.association(association_name)
           true
         rescue ::ActiveRecord::AssociationNotFoundError => _err
