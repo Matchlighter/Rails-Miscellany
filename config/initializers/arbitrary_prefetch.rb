@@ -1,1 +1,0 @@
-Miscellany::ArbitraryPrefetch.install

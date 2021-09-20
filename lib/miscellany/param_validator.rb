@@ -1,6 +1,7 @@
 module Miscellany
   class ParamValidator
-    attr_accessor :context, :options, :errors
+    attr_accessor :context, :errors
+    attr_reader :params
 
     delegate_missing_to :context
 
@@ -21,14 +22,11 @@ module Miscellany
       end
     end
 
-    def initialize(block, context, parameters = nil, options = nil)
+    def initialize(block, context, parameters = nil)
       @block = block
       @context = context
       @params = parameters || context.params
-      @subkeys = []
-      @options = options || {}
-      @errors = {}
-      @explicit_parameters = []
+      @errors = ErrorStore.new
     end
 
     def self.check(params, context: nil, &blk)
@@ -48,8 +46,13 @@ module Miscellany
 
     def apply_checks(&blk)
       blk ||= @block
-      args = trim_arguments(blk, [params, @subkeys[-1]])
-      instance_exec(*args, &blk)
+      args = trim_arguments(blk, [@params, :TODO])
+
+      dresult = instance_exec(*args, &blk)
+      dresult = "failed validation #{check}" if dresult == false
+      if dresult.present? && dresult != true
+        @errors.push(dresult)
+      end
     end
 
     def parameter(param_keys, *args, **kwargs, &blk)
@@ -107,56 +110,57 @@ module Miscellany
 
         # Nested check
         run_check[:block] do |blk|
-          sub_parameter(pk) do
-            apply_checks(&blk)
-          end
+          ParamValidator.check(params[pk], context: context, &blk)
         end
 
         # Array Items check
         run_check[:items] do |blk|
-          sub_parameter(pk) do
-            if params.is_a?(Array)
-              error_items = 0
+          if params[pk].is_a?(Array)
+            error_items = 0
+            astore = ErrorStore.new
 
-              params.each_with_index do |v, i|
-                cresult = {}
-                exec_check(cresult, :array_item) do
-                  sub_parameter(i) { apply_checks(&blk) }
-                end
+            params[pk].each_with_index do |v, i|
+              errs = nil
+              if blk.is_a?(Hash)
+                pv = ParamValidator.new(nil, self.context, params[pk])
+                pv.parameter(i, **blk)
+                ers = pv.errors
+              else
+                errs = ParamValidator.check(params[pk][i], context: context, &blk)
+              end
 
-                cresult = cresult[:array_item]
-                merged = merge_error_hashes((check_results[:items] || {})[i], cresult)
-                if merged.present?
-                  error_items += 1
-                  if error_items > 5
-                    check_results[:items] = merge_error_hashes(check_results[:items], "Too Many Errors")
-                    break
-                  else
-                    check_results[:items] = merge_error_hashes(check_results[:items], { i => merged})
-                  end
+              if errs.present?
+                error_items += 1
+                if error_items > 5
+                  check_results[:items]
+                  astore.push("Too Many Errors")
+                  break
+                else
+                  astore.push_to(i, errs)
                 end
               end
-              nil
-            else
-              raise "items: validator can only be used with Arrays"
             end
+
+            astore
+          else
+            raise "items: validator can only be used with Arrays"
           end
         end
       end
 
-      final_errors = {}
+      final_errors = ErrorStore.new
       checks.each do |check, check_prefix|
         if check_prefix == :all || check_prefix == nil
           all_results.each do |field, err_map|
             errs = err_map[check]
             next unless errs.present?
 
-            final_errors[field] = merge_error_hashes(final_errors[field], errs)
+            final_errors.push_to(field, errs)
           end
         elsif check_prefix == :none
           all_results.each do |field, err_map|
             errs = err_map[check]
-            final_errors[field] = merge_error_hashes(final_errors[field], "must NOT be #{check}") unless errs.present?
+            final_errors.push_to(field, "must NOT be #{check}") unless errs.present?
           end
         else
           counts = check_pass_count(check, all_results)
@@ -171,13 +175,14 @@ module Miscellany
             (counts[:passed] > 1 && check_prefix == :onem) ||
             (counts[:passed] < 1 && check_prefix == :onep)
 
-            final_errors = merge_error_hashes(final_errors, "#{string_prefixes[check_prefix]} #{field_key} #{check}")
+            final_errors.push("#{string_prefixes[check_prefix]} #{field_key} must be #{check}")
           end
         end
       end
 
-      @errors = merge_error_hashes(@errors, final_errors)
-      final_errors
+      @errors.merge!(final_errors)
+
+      nil
     end
 
     alias p parameter
@@ -206,30 +211,29 @@ module Miscellany
       # TODO: Support Running checks of the same type for different prefixes
 
       check_prefixes = NON_PREFIXED.include?(check) ? [nil] : Array(checks_to_run&.[](check))
-      check_prefixes << '' if check == :array_item
       return true unless check_prefixes.present?
 
-      check_prefixes.each do |check_prefix|
-        initial_errors = @errors
-        @errors = []
-        prefix_options = (check_prefix.nil? ? options : options&.[](check_prefix)) || {}
-        args = trim_arguments(blk, [prefix_options[check]])
+      encountered_errors = false
 
-        result = yield(*args)
+      check_prefixes.each do |check_prefix|
+        prefixed_check = [check_prefix, check].compact.join('_')
+        prefix_options = (check_prefix.nil? ? options : options&.[](check_prefix)) || {}
+
+        result = blk.call(*trim_arguments(blk, [prefix_options[check]]))
         result = "failed validation #{check}" if result == false
 
-        if result.present? && result != true && result != @errors
-          result = options[:message] if options&.[](:message).present?
-          Array(result).each do |e|
-            @errors = merge_error_hashes(@errors, [e])
-          end
-        end
+        store = state[check] ||= ErrorStore.new
 
-        state[check] = merge_error_hashes(state[check], @errors)
-        @errors = initial_errors
+        if result.present? && result != true
+          result = options[:message] if options&.[](:message).present?
+
+          store.push(result)
+
+          encountered_errors = true
+        end
       end
 
-      !state[check].present?
+      !encountered_errors
     end
 
     def coerce_type(params, key, opts)
@@ -394,46 +398,6 @@ module Miscellany
       [key, nil]
     end
 
-    def sub_parameter(k)
-      @subkeys.push(k)
-      yield
-    ensure
-      @subkeys.pop
-    end
-
-    def params
-      p = @params
-      @subkeys.each { |k| p = p[k] }
-      p
-    end
-
-    def merge_error_hashes(target, from)
-      target ||= []
-      if target.is_a?(Hash)
-        ta = []
-        th = target
-      else
-        ta = target
-        th = target[-1].is_a?(Hash) ? ta.pop : {}
-      end
-
-      if from.is_a?(Hash)
-        from.each_pair do |k, v|
-          th[k] = merge_error_hashes(th[k], v)
-        end
-      elsif from.is_a?(Array)
-        merge_error_hashes(th, from.pop) if from[-1].is_a?(Hash)
-        from.each { |f| ta << f }
-      else
-        ta << from
-      end
-
-      return th if !ta.present? && th.present?
-
-      ta << th if th.present?
-      ta
-    end
-
     def merge_hashes(h1, h2)
       h2.each do |k, v|
         set_hash_key(h1, k, v)
@@ -450,6 +414,76 @@ module Miscellany
     def trim_arguments(blk, args)
       return args if blk.arity.negative?
       args[0..(blk.arity.abs - 1)]
+    end
+
+    class ErrorStore
+      attr_reader :errors, :fields
+
+      def initialize
+        @errors = []
+        @fields = {}
+      end
+
+      def push(error)
+        if error.is_a?(ErrorStore)
+          merge!(error)
+        elsif error.is_a?(Array)
+          error.each{|e| push(e) }
+        else
+          @errors << error
+        end
+      end
+
+      def push_to(field, error)
+        store_for(field).push(error)
+      end
+
+      def present?
+        @errors.present? || @fields.values.any?(&:present?)
+      end
+
+      def serialize
+        if @fields.values.any?(&:present?)
+          h = { }
+          h[:_SELF_] = @errors if @errors.present?
+          @fields.each do |k, v|
+            s = v.serialize
+            next unless s.present?
+            h[k] = s
+          end
+          h
+        elsif @errors.present?
+          @errors
+        else
+          nil
+        end
+      end
+
+      def merge!(other_store)
+        return self if other_store == self
+
+        @errors |= other_store.errors
+        other_store.fields.each do |k, v|
+          store_for(k).merge!(v)
+        end
+
+        self
+      end
+
+      def store_for(field)
+        if field.is_a?(Symbol) || field.is_a?(Numeric)
+          field = [field]
+        elsif field.is_a?(String)
+          field = field.split('.')
+        elsif field.is_a?(Array)
+          field = [*field]
+        end
+
+        sfield = field.shift
+        store = @fields[sfield.to_s] ||= ErrorStore.new
+        return store if field.count == 0
+        return store.store_for(field)
+      end
     end
   end
 end

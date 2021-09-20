@@ -1,8 +1,6 @@
 
 require 'spec_helper'
 
-Miscellany::ArbitraryPrefetch.install
-
 describe Miscellany::ArbitraryPrefetch do
   with_model :Post do
     table do |t|

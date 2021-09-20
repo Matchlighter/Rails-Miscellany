@@ -4,16 +4,6 @@
 #   The values of the Hash may be an array of [Symbol, Relation] or another (filtered) Relation.
 #   Objects are queried from an existing Association on the model. This Association is detemrined
 #   by either the Symbol when an array is passed, or by finding an Assoication for the passed Relation's model
-#
-# NOTICE: This implementation is NOT COMPLETE by itself - it depends on Goldiloader
-#   to detect the use of the virtual associations and prevent N+1s. We were already using
-#   Goldiloader, so this made sense. If this module is ever needed stand-alone,
-#   the following options have been identified:
-#     1. Extend ActiveRecordRelationPatch#exec_queries to execute an ActiveRecord::Associations::Preloader
-#        that will load the related objects
-#     2. Duplicates the relevant snippets from Goldiloader into this module. See Goldiloader::AutoIncludeContext
-#   The current Goldiloader implementation uses Option 1 internally, but also makes the relations lazy - even
-#     if you define a prefetch, it won't actually be loaded until you attempt to access it on one of the models.
 module Miscellany
   module ArbitraryPrefetch
     ACTIVE_RECORD_VERSION = ::Gem::Version.new(::ActiveRecord::VERSION::STRING).release

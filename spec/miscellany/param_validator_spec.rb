@@ -21,16 +21,16 @@ describe Miscellany::ParamValidator do
     }
   end
 
-  # TODO transform: items:
+  # TODO transform:
 
   def expect_valid(&blk)
     result = Miscellany::ParamValidator.check(value, &blk)
-    expect(result).to eq []
+    expect(result.serialize).to be_nil
   end
 
   def expect_invalid(&blk)
     result = Miscellany::ParamValidator.check(value, &blk)
-    expect(result.count).to be > 0
+    expect(result.serialize).to be_present
   end
 
   def expect_coercion(raw, type, expectation)
@@ -46,6 +46,15 @@ describe Miscellany::ParamValidator do
         p :value, default: 'HIA'
       end
       expect(result[:value]).to eq 'HIA'
+    end
+
+    it 'works deep' do
+      result = Miscellany::ParamValidator.assert({ value: {} }, handle: ->(v){ raise 'Invalid' }) do
+        p :value do |x|
+          p :value, default: 'Hia'
+        end
+      end
+      expect(result).to eq ({ value: { value: 'Hia' } })
     end
   end
 
@@ -166,7 +175,7 @@ describe Miscellany::ParamValidator do
   end
 
   describe 'items:' do
-    it 'works' do
+    it 'works when given a Lambda' do
       expect_valid do
         p :array, items: ->(*args) {
           p :a, in: [2, 3]
@@ -183,6 +192,9 @@ describe Miscellany::ParamValidator do
           'bob'
         }
       end
+    end
+    it 'works when given a Hash' do
+      # TODO
     end
   end
 
