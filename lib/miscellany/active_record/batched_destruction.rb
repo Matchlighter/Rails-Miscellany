@@ -16,7 +16,6 @@ module Miscellany
 
     class_methods do
       def bulk_destroy(**kwargs)
-        return to_sql
         bulk_destroy_internal(self, **kwargs)
       end
 

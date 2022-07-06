@@ -124,7 +124,7 @@ module Miscellany
               if blk.is_a?(Hash)
                 pv = ParamValidator.new(nil, self.context, params[pk])
                 pv.parameter(i, **blk)
-                ers = pv.errors
+                errs = pv.errors.store_for(i)
               else
                 errs = ParamValidator.check(params[pk][i], context: context, &blk)
               end

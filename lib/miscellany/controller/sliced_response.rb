@@ -17,7 +17,9 @@ module Miscellany
       default_sort: nil, valid_sorts: nil,
       &blk
     )
-      normalized_sorts = normalize_sort_options(valid_sorts || queryset.column_names, default: default_sort)
+      valid_sorts ||= queryset.column_names if queryset.respond_to?(:column_names)
+      valid_sorts ||= []
+      normalized_sorts = normalize_sort_options(valid_sorts, default: default_sort)
 
       slice = Slice.build(
         queryset, slice_params,
@@ -85,7 +87,9 @@ module Miscellany
 
     def normalize_sort(sort, key: nil)
       sort = sort.to_s if sort.is_a?(Symbol)
-      if sort.is_a?(String)
+      if sort.is_a?(Array)
+        sort = { **normalize_sort(sort[0]), **(sort[1] || {}) }
+      elsif sort.is_a?(String)
         m = sort.match(/^([\w\.]+)(?: (ASC|DESC)(!?))?$/)
         sort = { column: m[1], order: m[2], force_order: m[3].present? }.compact
       elsif sort.is_a?(Proc)
@@ -234,7 +238,12 @@ module Miscellany
       def sliced_items
         @sliced_items ||= begin
           if items.is_a?(Array)
-            items
+            start, finish = slice_bounds
+            if start && finish
+              items[start...finish]
+            else
+              items
+            end
           elsif items.is_a?(Proc)
             items.call(self)
           elsif items.is_a?(ActiveRecord::Relation)
@@ -255,10 +264,20 @@ module Miscellany
           sorts << options[:valid_sorts][:default] if options.dig(:valid_sorts, :default).present?
 
           sorts.reduce(qset) do |qset, sort|
+            order = sort[:order] || 'ASC'
             if sort[:column].is_a?(Proc)
-              sort[:column].call(qset, sort[:order] || 'ASC')
+              sort[:column].call(qset, order)
             else
-              qset.order(sort[:column] => sort[:order] || 'ASC')
+              desired_nulls = (sort[:nulls] || :low).to_s.downcase.to_sym
+              nulls = case desired_nulls
+              when :last
+                'LAST'
+              when :first
+                'FIRST'
+              else
+                (desired_nulls == :high) == (order.to_s.upcase == 'DESC') ? 'FIRST' : 'LAST'
+              end
+              qset.order("#{sort[:column]} #{order} NULLS #{nulls}")
             end
           end
         else
