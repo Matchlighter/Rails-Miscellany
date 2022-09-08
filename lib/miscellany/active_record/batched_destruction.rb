@@ -32,7 +32,7 @@ module Miscellany
       def bulk_destroy_internal(items, **kwargs)
         options = {}
         options.merge!(kwargs)
-        ClassCallbackExector.run_callbacks(model_class, :bulk_destroy, options: options) do
+        ClassCallbackExector.run_callbacks(model_class, :bulk_destroy, { options: options }) do
           if items.respond_to?(:find_in_batches)
             items.find_in_batches do |batch|
               _destroy_batch(batch, options)
@@ -47,6 +47,7 @@ module Miscellany
         ClassCallbackExector.run_callbacks(model_class, :destroy_batch, {
           model_class: model_class,
           batch: batch,
+          options: options,
         }) do
           model_class.destroy_bulk_batch(batch, options)
         end
@@ -84,7 +85,6 @@ module Miscellany
             env[k]
           end
         end
-        @options = options
       end
 
       def self.run_callbacks(cls, callback, env={}, &blk)
