@@ -35,14 +35,15 @@ module Miscellany
           comp = model.get_defined_computed(k)
           raise "Undefined ComputedColum :#{k}" if comp.nil?
 
-          builder = ComputedBuilder.new(k, v, &comp)
+          builder = ComputedBuilder.new(all, k, v, &comp)
           builder.apply(query)
         end
       end
     end
 
     class ComputedBuilder
-      def initialize(key, args, &blk)
+      def initialize(relation, key, args, &blk)
+        @relation = relation
         @key = key
         @args = args.is_a?(Array) ? args : [args]
         @block = blk
@@ -55,7 +56,7 @@ module Miscellany
           raise "Must provide either a value or a block" if arg == :not_given && !blk
 
           if arg == :not_given
-            arg = blk.call
+            arg = @relation.instance_eval(&blk)
           end
 
           @compiled[m] = arg
