@@ -22,7 +22,7 @@ Gem::Specification.new do |spec|
   spec.test_files = Dir["spec/**/*"]
   spec.require_paths = ['lib']
 
-  spec.add_dependency 'rails', '>= 5', '< 6.3'
+  spec.add_dependency 'rails', '>= 5', '< 8.0'
   # spec.add_dependency 'activerecord', '>= 5', '< 6.3'
   # spec.add_dependency 'activesupport', '>= 5', '< 6.3'
 

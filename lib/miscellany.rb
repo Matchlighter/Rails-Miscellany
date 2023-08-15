@@ -14,5 +14,6 @@ module Miscellany
     Miscellany::CustomPreloaders.install
     Miscellany::ArbitraryPrefetch.install
     Miscellany::ComputedColumns.install
+    Miscellany::GoldiloadValue.install
   end
 end
