@@ -139,18 +139,31 @@ module Miscellany
     end
 
     module ActiveRecordPreloaderPatch
-      if ACTIVE_RECORD_VERSION >= ::Gem::Version.new('6.0.0')
-        def grouped_records(association, records, polymorphic_parent)
-          h = {}
-          records.each do |record|
-            next unless record
-            reflection = record.class._reflect_on_association(association)
-            reflection ||= record.association(association)&.reflection rescue nil
-            next if polymorphic_parent && !reflection || !record.association(association).klass
-            (h[reflection] ||= []) << record
-          end
-          h
+      def grouped_records(association, records, polymorphic_parent)
+        h = {}
+        records.each do |record|
+          next unless record
+          reflection = record.class._reflect_on_association(association)
+          reflection ||= record.association(association)&.reflection rescue nil
+          next if polymorphic_parent && !reflection || !record.association(association).klass
+          (h[reflection] ||= []) << record
         end
+        h
+      end
+    end
+
+    module ActiveRecordPreloaderBranchPatch
+      def grouped_records
+        h = {}
+        polymorphic_parent = !root? && parent.polymorphic?
+        source_records.each do |record|
+          next unless record
+          reflection = record.class._reflect_on_association(association)
+          reflection ||= record.association(association)&.reflection rescue nil
+          next if polymorphic_parent && !reflection || !record.association(association).klass
+          (h[reflection] ||= []) << record
+        end
+        h
       end
     end
 
@@ -167,7 +180,11 @@ module Miscellany
       ::ActiveRecord::Relation.prepend(ActiveRecordRelationPatch)
       ::ActiveRecord::Relation::Merger.prepend(ActiveRecordMergerPatch)
 
-      ::ActiveRecord::Associations::Preloader.prepend(ActiveRecordPreloaderPatch)
+      if ACTIVE_RECORD_VERSION >= ::Gem::Version.new('7.0.0')
+        ::ActiveRecord::Associations::Preloader::Branch.prepend(ActiveRecordPreloaderBranchPatch)
+      elsif ACTIVE_RECORD_VERSION >= ::Gem::Version.new('6.0.0')
+        ::ActiveRecord::Associations::Preloader.prepend(ActiveRecordPreloaderPatch)
+      end
 
       ::ActiveRecord::Reflection::AssociationReflection.prepend(ActiveRecordReflectionPatch)
 
