@@ -6,11 +6,11 @@ module Miscellany
 
     include HttpErrorHandling
 
+    # Deprecated
     def slice_results(queryset, **kwargs)
       @sliced_data = sliced_json(queryset, **kwargs) { |x| x }
     end
 
-    # rubocop:disable Metrics/ParameterLists
     def sliced_json(
       queryset, slice_params = params,
       max_size: 50, default_size: 25, allow_all: false,
@@ -19,7 +19,12 @@ module Miscellany
     )
       valid_sorts ||= queryset.column_names if queryset.respond_to?(:column_names)
       valid_sorts ||= []
-      normalized_sorts = normalize_sort_options(valid_sorts, default: default_sort)
+
+      if !valid_sorts.present? && defined?(Miscellany::ComplexQuery) && queryset.is_a?(Miscellany::ComplexQuery)
+        sort_parser = queryset.send(:sort_parser)
+      else
+        sort_parser = Miscellany::SortLang::Parser.new(valid_sorts, default: default_sort)
+      end
 
       slice = Slice.build(
         queryset, slice_params,
@@ -28,18 +33,22 @@ module Miscellany
         max_size: max_size,
         default_size: default_size,
         allow_all: allow_all,
-        valid_sorts: normalized_sorts,
+        sort_parser: sort_parser,
       )
 
       slice.render_json
     end
-    # rubocop:enable Metrics/ParameterLists
 
+    # Format the given data as a JSON slice, but doesn't expect slicing parameters
     def as_sliced_json(queryset, slice: nil, total_count: nil, &blk)
       slice = Slice.build(queryset, slice, total_count: total_count, item_transformer: blk)
       slice.render_json
     end
 
+    # Wrap a Bearcat API instance in a slicing API
+    # bearcat_as_sliced_json() do |params|
+    #   bearcat_instance.courses(params)
+    # end
     def bearcat_as_sliced_json(*args, transform: nil, **kwargs, &blk)
       bearcat_exec = ->(slice) {
         response = blk.call({
@@ -55,49 +64,6 @@ module Miscellany
     end
 
     private
-
-    def normalize_sort_options(sorts, default: nil)
-      norm_sorts = { }
-
-      sorts.each do |s|
-        if s.is_a?(Hash)
-          s.each do |k,v|
-            sort_hash = normalize_sort(v, key: k)
-            norm_sorts[k] = sort_hash
-          end
-        else
-          sort_hash = normalize_sort(s)
-          norm_sorts[sort_hash[:column]] = sort_hash
-          # default ||= sort_hash
-        end
-      end
-
-      if default.present?
-        norm_default = normalize_sort(default)
-        reference = norm_sorts[norm_default[:key].to_s] || norm_default
-        norm_sorts[:default] = {
-          key: reference[:key],
-          column: reference[:column],
-          order: norm_default[:order] || reference[:order],
-        }
-      end
-
-      norm_sorts
-    end
-
-    def normalize_sort(sort, key: nil)
-      sort = sort.to_s if sort.is_a?(Symbol)
-      if sort.is_a?(Array)
-        sort = { **normalize_sort(sort[0]), **(sort[1] || {}) }
-      elsif sort.is_a?(String)
-        m = sort.match(/^([\w\.]+)(?: (ASC|DESC)(!?))?$/)
-        sort = { column: m[1], order: m[2], force_order: m[3].present? }.compact
-      elsif sort.is_a?(Proc)
-        sort = { column: sort }
-      end
-      sort[:key] = key || sort[:column]
-      sort.compact
-    end
 
     class Slice
       attr_accessor :slice_start, :slice_end
@@ -131,7 +97,11 @@ module Miscellany
               slice_bounds = [(page_number - 1) * page_size, page_number * page_size]
             end
 
-            slice[:sort] = parse_and_validate_sorts(arg[:sort], options[:valid_sorts])
+            begin
+              slice[:sort] = options[:sort_parser]&.parse(arg[:sort], ignore_errors: true)
+            rescue Miscellany::SortLang::Parser::SortParsingError => e
+              raise HttpErrorHandling::HttpError, message: e.message
+            end
           end
 
           if slice_bounds.present?
@@ -192,27 +162,6 @@ module Miscellany
       end
       def rendered_json; render_json; end
 
-      def self.parse_and_validate_sorts(sortstr, sorts_map, silent_failure: true)
-        (sortstr || '').split(',').map do |s|
-          m = s.strip.match(/^(\w+)(?: (ASC|DESC))?$/)
-
-          if m.nil?
-            next if silent_failure
-            raise HttpErrorHandling::HttpError, message: 'Could not parse sort parameter'
-          end
-
-          resolved_sort = sorts_map[m[1]]
-          unless resolved_sort.present?
-            next if silent_failure
-            raise HttpErrorHandling::HttpError, message: 'Could not parse sort parameter'
-          end
-
-          sort = resolved_sort.dup
-          sort[:order] = m[2] if m[2].present? && !sort[:force_order]
-          sort
-        end.compact.presence || [sorts_map[:default]].compact
-      end
-
       private
 
       def rendered_items
@@ -226,6 +175,8 @@ module Miscellany
           if items.is_a?(ActiveRecord::Relation)
             items.except(:select).count
           elsif items.respond_to?(:count)
+            items.count
+          elsif defined?(Miscellany::ComplexQuery) && items.is_a?(Miscellany::ComplexQuery)
             items.count
           else
             nil
@@ -247,7 +198,12 @@ module Miscellany
           elsif items.is_a?(ActiveRecord::Relation)
             offset, limit = slice_bounds
             limit -= offset unless limit.nil?
-            apply_ar_sort(items).limit(limit).offset(offset)
+            items.order(Arel.sql(sort_sql)).limit(limit).offset(offset).to_a
+          elsif defined?(Miscellany::ComplexQuery) && items.is_a?(Miscellany::ComplexQuery)
+            offset, limit = slice_bounds
+            limit -= offset unless limit.nil?
+            query = items.send(:build_query)
+            items.slice(offset, limit, raw_sort: sort_sql)
           end
         end
       end
@@ -256,43 +212,15 @@ module Miscellany
         [slice_start, slice_end == -1 ? nil : slice_end]
       end
 
-      def apply_ar_sort(qset)
-        if sort.present?
-          sorts = [ *Array(self.sort) ]
-          sorts << options[:valid_sorts][:default] if options.dig(:valid_sorts, :default).present?
+      def sort_sql
+        sorts = [ *Array(self.sort) ]
+        sorts << options[:sort_parser]&.default
+        sorts.compact!
 
-          sorts.reduce(qset) do |qset, sort|
-            order = sort[:order] || 'ASC'
-            if sort[:column].is_a?(Proc)
-              sort[:column].call(qset, order)
-            else
-              desired_nulls = (sort[:nulls] || :low).to_s.downcase.to_sym
-              nulls = case desired_nulls
-              when :last
-                'LAST'
-              when :first
-                'FIRST'
-              else
-                (desired_nulls == :high) == (order.to_s.upcase == 'DESC') ? 'FIRST' : 'LAST'
-              end
-              qset.order("#{sort[:column]} #{order} NULLS #{nulls}")
-            end
-          end
-        else
-          qset
-        end
+        return nil unless sorts.present?
+
+        Miscellany::SortLang.sqlize(sorts)
       end
-    end
-
-    module JbuilderTemplateExt
-      def partial!(*args, **kwargs, &blk)
-        kwargs[:block] = blk if blk.present?
-        super(*args, **kwargs)
-      end
-    end
-
-    def self.install_extensions
-      ::JbuilderTemplate.prepend JbuilderTemplateExt
     end
   end
 end
