@@ -112,7 +112,6 @@ module Miscellany
         @options = options
       end
 
-      # rubocop:disable Metrics/PerceivedComplexity
       def self.build(queryset, arg, options={})
         new(queryset, options).tap do |slice|
           if arg.is_a?(Array)
@@ -149,7 +148,6 @@ module Miscellany
           end
         end
       end
-      # rubocop:enable Metrics/PerceivedComplexity
 
       def [](key)
         send(key)

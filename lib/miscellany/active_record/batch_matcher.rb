@@ -88,7 +88,6 @@ module Miscellany
       end
     end
 
-    # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
     def resolve_row_value(row, resolver)
       found_values = []
       @columns.each do |c|
@@ -103,18 +102,16 @@ module Miscellany
       end
 
       if @options[:validate_all] && found_values.uniq.count > 1
-        raise ActiveRecord::RecordNotFound, "multiple of [#{@columns.pluck(2).join(', ')}] were supplied, but resolved to different objects" # rubocop:disable Metrics/LineLength
+        raise ActiveRecord::RecordNotFound, "multiple of [#{@columns.pluck(2).join(', ')}] were supplied, but resolved to different objects"
       end
 
       found_values[0]
     end
-    # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
 
-    # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity
     def get_column_map(column, row, via_column: nil)
       base_query = get_base_query(row)
       clazz = as_class(base_query)
-      raise ActiveRecord::RecordNotFound, "invalid #{@options[:polymorphic_on]}: #{row[@options[:polymorphic_on]]}" if clazz.nil? # rubocop:disable Metrics/LineLength
+      raise ActiveRecord::RecordNotFound, "invalid #{@options[:polymorphic_on]}: #{row[@options[:polymorphic_on]]}" if clazz.nil?
 
       load_column(clazz, column, via_column) do
         relevant_rows = rows
@@ -128,10 +125,9 @@ module Miscellany
         loaded_hash = load_column_data(column, base_query, row_keys)
 
         # In :lazy mode, the corresponding primary_column data is loaded with each column
-        load_column_data(primary_column, base_query, loaded_hash.values) if @options[:mode] == :lazy && column != @primary_column # rubocop:disable Metrics/LineLength
+        load_column_data(primary_column, base_query, loaded_hash.values) if @options[:mode] == :lazy && column != @primary_column
       end
     end
-    # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity
 
     def load_column_data(column, base_query, keys)
       data = if column == @primary_column
