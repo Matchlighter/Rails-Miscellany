@@ -80,7 +80,7 @@ module Miscellany
           pfc = PrefetcherContext.new(model, opts)
           pfc.link_models(records)
 
-          unless defined?(Goldiloader)
+          unless defined?(Goldiloader) && Goldiloader.enabled?
             if PRE_RAILS_6_2
               ::ActiveRecord::Associations::Preloader.new.preload(records, [opts[:attribute]])
             else

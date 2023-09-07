@@ -41,6 +41,22 @@ describe Miscellany::ArbitraryPrefetch do
     expect(posts[0].favorite_comment).to be
   end
 
+  it 'works with Goldiloader active' do
+    Goldiloader.enabled do
+      posts = Post.prefetch(favorite_comment: Comment.where(favorite: true))
+      expect(posts.count).to eq 10
+      expect(posts[0].favorite_comment).to be
+    end
+  end
+
+  it 'works with Goldiloader disabled' do
+    Goldiloader.disabled do
+      posts = Post.prefetch(favorite_comment: Comment.where(favorite: true))
+      expect(posts.count).to eq 10
+      expect(posts[0].favorite_comment).to be
+    end
+  end
+
   context 'prefetch is singluar' do
     it 'returns a single object' do
       posts = Post.prefetch(favorite_comment: Comment.where(favorite: true))
