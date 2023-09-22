@@ -60,8 +60,8 @@ module Miscellany
         false
       end
 
-      def parse(sortstr, ignore_errors: true)
-        (sortstr || '').split(',').map do |s|
+      def parse(sortstr, ignore_errors: true, default: :true)
+        sorts = (sortstr || '').split(',').map do |s|
           m = s.strip.match(/^(\w+)(?: (ASC|DESC))?$/)
 
           if m.nil?
@@ -78,7 +78,11 @@ module Miscellany
           sort = resolved_sort.dup
           sort[:order] = m[2] if m[2].present? && !sort[:force_order]
           sort
-        end.compact.presence
+        end
+
+        sorts << self.default if default == :append || default && !sorts.compact.present?
+
+        sorts.compact.presence
       end
 
       protected

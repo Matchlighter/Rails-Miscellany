@@ -98,7 +98,7 @@ module Miscellany
             end
 
             begin
-              slice[:sort] = options[:sort_parser]&.parse(arg[:sort], ignore_errors: true)
+              slice[:sort] = options[:sort_parser]&.parse(arg[:sort], ignore_errors: true, default: true)
             rescue Miscellany::SortLang::Parser::SortParsingError => e
               raise HttpErrorHandling::HttpError, message: e.message
             end
