@@ -129,6 +129,19 @@ describe Miscellany::SlicedResponse do
 
       expect(subject.sliced_json(ARModel.all, { page: "all" }, allow_all: true, **slice_config)).to be_a Hash
     end
+
+    context "with Hash-based valid_sorts" do
+      let(:source) { ARModel.all }
+
+      before(:each) do
+        slice_config[:valid_sorts] = [
+          title: ->(dir) { "title #{dir}" }
+        ]
+      end
+
+      include_examples "basic functionality"
+      include_examples "sortable"
+    end
   end
 
   describe "#bearcat_as_sliced_json" do

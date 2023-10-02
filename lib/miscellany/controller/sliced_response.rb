@@ -7,8 +7,8 @@ module Miscellany
     include HttpErrorHandling
 
     # Deprecated
-    def slice_results(queryset, **kwargs)
-      @sliced_data = sliced_json(queryset, **kwargs) { |x| x }
+    def slice_results(*args, **kwargs, &blk)
+      @sliced_data = sliced_json(*args, **kwargs, &blk)
     end
 
     def sliced_json(
@@ -198,7 +198,12 @@ module Miscellany
           elsif items.is_a?(ActiveRecord::Relation)
             offset, limit = slice_bounds
             limit -= offset unless limit.nil?
-            items.order(Arel.sql(sort_sql)).limit(limit).offset(offset).to_a
+
+            query = items
+            sort_clause = sort_sql
+            query = query.order(Arel.sql(sort_clause)) if sort_clause.present?
+
+            query.limit(limit).offset(offset).to_a
           elsif defined?(Miscellany::ComplexQuery) && items.is_a?(Miscellany::ComplexQuery)
             offset, limit = slice_bounds
             limit -= offset unless limit.nil?

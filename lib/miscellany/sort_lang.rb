@@ -26,7 +26,7 @@ module Miscellany
       sorts.map do |sort|
         order = sort[:order] || 'ASC'
         if sort[:column].is_a?(Proc)
-          sort[:column].call(qset, order)
+          sort[:column].call(order)
         else
           desired_nulls = (sort[:nulls] || :low).to_s.downcase.to_sym
           nulls = case desired_nulls
@@ -93,6 +93,7 @@ module Miscellany
         sorts.each do |s|
           if s.is_a?(Hash)
             s.each do |k,v|
+              k = k.to_s
               sort_hash = normalize_sort(v, key: k)
               norm_sorts[k] = sort_hash
             end
