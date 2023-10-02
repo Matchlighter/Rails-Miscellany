@@ -219,7 +219,7 @@ module Miscellany
 
       def sort_sql
         sorts = [ *Array(self.sort) ]
-        sorts << options[:sort_parser]&.default
+        sorts.push(*options[:sort_parser]&.default_sorts)
         sorts.compact!
 
         return nil unless sorts.present?

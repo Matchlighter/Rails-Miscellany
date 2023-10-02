@@ -23,6 +23,21 @@ module Miscellany
     end
 
     def self.sqlize(sorts)
+      seen_sorts = Set.new
+
+      # Only include each sort key/"column" once
+      sorts = sorts.select do |sort|
+        sid = sort[:key] || sort[:column]
+        next true unless sid.present?
+
+        if seen_sorts.include?(sid)
+          false
+        else
+          seen_sorts << sid
+          true
+        end
+      end
+
       sorts.map do |sort|
         order = sort[:order] || 'ASC'
         if sort[:column].is_a?(Proc)
@@ -45,12 +60,20 @@ module Miscellany
     class Parser
       class SortParsingError < StandardError; end
 
-      def initialize(valid_sorts, default: nil)
-        @sorts_map = normalize_sort_options(valid_sorts, default: default)
-      end
+      attr_reader :default_sorts
 
-      def default
-        @sorts_map[:default]
+      def initialize(valid_sorts, default: nil)
+        @sorts_map = normalize_sort_options(valid_sorts)
+
+        @default_sorts = []
+
+        parsed_defaults = normalize_sort_options(Array(default))
+        parsed_defaults.each do |k,v|
+          @sorts_map[k] ||= v
+        end
+        @default_sorts = parsed_defaults.keys.map do |k|
+          @sorts_map[k]
+        end
       end
 
       def valid?(sortstr)
@@ -80,14 +103,16 @@ module Miscellany
           sort
         end
 
-        sorts << self.default if default == :append || default && !sorts.compact.present?
+        if default == :append || default && !sorts.compact.present?
+          sorts.push(*self.default_sorts)
+        end
 
         sorts.compact.presence
       end
 
       protected
 
-      def normalize_sort_options(sorts, default: nil)
+      def normalize_sort_options(sorts)
         norm_sorts = { }
 
         sorts.each do |s|
@@ -100,18 +125,7 @@ module Miscellany
           else
             sort_hash = normalize_sort(s)
             norm_sorts[sort_hash[:column]] = sort_hash
-            # default ||= sort_hash
           end
-        end
-
-        if default.present?
-          norm_default = normalize_sort(default)
-          reference = norm_sorts[norm_default[:key].to_s] || norm_default
-          norm_sorts[:default] = {
-            key: reference[:key],
-            column: reference[:column],
-            order: norm_default[:order] || reference[:order],
-          }
         end
 
         norm_sorts
