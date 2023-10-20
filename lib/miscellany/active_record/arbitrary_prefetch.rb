@@ -47,146 +47,186 @@ module Miscellany
             qs = qs.merge(source_refl.scope_for(model.unscoped)) if source_refl.scope
             qs
           }
+          pass_opts = source_refl.options.merge(
+            class_name: source_refl.class_name,
+            inverse_of: nil,
+            arbitrary_source_reflection: source_refl,
+          )
+          if source_refl.is_a?(ActiveRecord::Reflection::ThroughReflection)
+            pass_opts[:source] = source_refl.source_reflection_name
+          end
           ActiveRecord::Reflection.create(
             options[:type],
             @target_attribute,
             scope,
-            source_refl.options.merge(
-              class_name: source_refl.class_name,
-              inverse_of: nil
-            ),
+            pass_opts,
             model
           )
         end
       end
     end
 
-    module ActiveRecordBasePatch
-      extend ActiveSupport::Concern
+    module ActiveRecordPatches
+      module BasePatch
+        extend ActiveSupport::Concern
 
-      included do
-        class << self
-          delegate :prefetch, to: :all
+        included do
+          class << self
+            delegate :prefetch, to: :all
+          end
         end
       end
-    end
 
-    module ActiveRecordRelationPatch
-      def exec_queries
-        return super if loaded?
+      module RelationPatch
+        def exec_queries
+          return super if loaded?
 
-        records = super
-        (@values[:prefetches] || {}).each do |_key, opts|
-          pfc = PrefetcherContext.new(model, opts)
-          pfc.link_models(records)
+          records = super
+          (@values[:prefetches] || {}).each do |_key, opts|
+            pfc = PrefetcherContext.new(model, opts)
+            pfc.link_models(records)
 
-          unless defined?(Goldiloader) && Goldiloader.enabled?
-            if PRE_RAILS_6_2
-              ::ActiveRecord::Associations::Preloader.new.preload(records, [opts[:attribute]])
+            unless defined?(Goldiloader) && Goldiloader.enabled?
+              if PRE_RAILS_6_2
+                ::ActiveRecord::Associations::Preloader.new.preload(records, [opts[:attribute]])
+              else
+                ::ActiveRecord::Associations::Preloader.new(records: records, associations: [opts[:attribute]]).call
+              end
+            end
+          end
+          records
+        end
+
+        def prefetch(**kwargs)
+          spawn.add_prefetches!(kwargs)
+        end
+
+        def add_prefetches!(kwargs)
+          return unless kwargs.present?
+
+          assert_mutability!
+          @values[:prefetches] ||= {}
+          kwargs.each do |attr, opts|
+            @values[:prefetches][attr] = normalize_prefetch_options(attr, opts)
+          end
+          self
+        end
+
+        def normalize_prefetch_options(attr, opts)
+          norm = if opts.is_a?(Array)
+              { relation: opts[0], queryset: opts[1] }
+            elsif opts.is_a?(ActiveRecord::Relation)
+              rel_name = opts.model.name.underscore
+              rel = (model.reflections[rel_name] || model.reflections[rel_name.pluralize])&.name
+              { relation: rel, queryset: opts }
             else
-              ::ActiveRecord::Associations::Preloader.new(records: records, associations: [opts[:attribute]]).call
+              opts
+          end
+
+          norm[:attribute] = attr
+          norm[:type] ||= (attr.to_s.pluralize == attr.to_s) ? :has_many : :has_one
+
+          norm
+        end
+      end
+
+      module Relation
+        module MergerPatch
+          def merge
+            super.tap do
+              merge_prefetches
+            end
+          end
+
+          private
+
+          def merge_prefetches
+            relation.add_prefetches!(other.values[:prefetches])
+          end
+        end
+      end
+
+      module Associations
+        if ACTIVE_RECORD_VERSION >= ::Gem::Version.new('7.0.0')
+          module Preloader
+            module BranchPatch
+              def grouped_records
+                h = {}
+                polymorphic_parent = !root? && parent.polymorphic?
+                source_records.each do |record|
+                  next unless record
+                  reflection = record.class._reflect_on_association(association)
+                  reflection ||= record.association(association)&.reflection rescue nil
+                  next if polymorphic_parent && !reflection || !record.association(association).klass
+                  (h[reflection] ||= []) << record
+                end
+                h
+              end
+            end
+          end
+        elsif ACTIVE_RECORD_VERSION >= ::Gem::Version.new('6.0.0')
+          module PreloaderPatch
+            def grouped_records(association, records, polymorphic_parent)
+              h = {}
+              records.each do |record|
+                next unless record
+                reflection = record.class._reflect_on_association(association)
+                reflection ||= record.association(association)&.reflection rescue nil
+                next if polymorphic_parent && !reflection || !record.association(association).klass
+                (h[reflection] ||= []) << record
+              end
+              h
             end
           end
         end
-        records
       end
 
-      def prefetch(**kwargs)
-        spawn.add_prefetches!(kwargs)
-      end
-
-      def add_prefetches!(kwargs)
-        return unless kwargs.present?
-
-        assert_mutability!
-        @values[:prefetches] ||= {}
-        kwargs.each do |attr, opts|
-          @values[:prefetches][attr] = normalize_prefetch_options(attr, opts)
-        end
-        self
-      end
-
-      def normalize_prefetch_options(attr, opts)
-        norm = if opts.is_a?(Array)
-            { relation: opts[0], queryset: opts[1] }
-          elsif opts.is_a?(ActiveRecord::Relation)
-            rel_name = opts.model.name.underscore
-            rel = (model.reflections[rel_name] || model.reflections[rel_name.pluralize])&.name
-            { relation: rel, queryset: opts }
-          else
-            opts
+      module Reflection
+        module AssociationReflectionPatch
+          def check_preloadable!
+            return if scope && scope.arity < 0
+            super
+          end
         end
 
-        norm[:attribute] = attr
-        norm[:type] ||= (attr.to_s.pluralize == attr.to_s) ? :has_many : :has_one
-
-        norm
+        module ThroughReflectionPatch
+          def check_validity!
+            return if options[:arbitrary_source_reflection] # Rails already checked the base relation, we're good
+            super
+          end
+        end
       end
     end
 
-    module ActiveRecordMergerPatch
-      def merge
-        super.tap do
-          merge_prefetches
+    def self.apply_patches(mod, install_base, base_module: nil)
+      return unless mod.is_a?(Module)
+
+      base_module ||= mod
+
+      if mod.name.ends_with? "Patch"
+        base_full_name = base_module.to_s
+        mod_full_name = mod.to_s
+        mod_rel_name = mod_full_name.sub(base_full_name, '')
+        mod_rel_bits = mod_rel_name.split('::').select(&:present?).map do |bit|
+          bit.ends_with?('Patch') ? bit[0..-6] : bit
+        end
+        final_mod_name = [install_base, *mod_rel_bits].select(&:present?).join("::")
+        install_mod = final_mod_name.constantize
+
+        if mod.is_a?(ActiveSupport::Concern)
+          install_mod.include(mod)
+        else
+          install_mod.prepend(mod)
         end
       end
 
-      private
-
-      def merge_prefetches
-        relation.add_prefetches!(other.values[:prefetches])
-      end
-    end
-
-    module ActiveRecordPreloaderPatch
-      def grouped_records(association, records, polymorphic_parent)
-        h = {}
-        records.each do |record|
-          next unless record
-          reflection = record.class._reflect_on_association(association)
-          reflection ||= record.association(association)&.reflection rescue nil
-          next if polymorphic_parent && !reflection || !record.association(association).klass
-          (h[reflection] ||= []) << record
-        end
-        h
-      end
-    end
-
-    module ActiveRecordPreloaderBranchPatch
-      def grouped_records
-        h = {}
-        polymorphic_parent = !root? && parent.polymorphic?
-        source_records.each do |record|
-          next unless record
-          reflection = record.class._reflect_on_association(association)
-          reflection ||= record.association(association)&.reflection rescue nil
-          next if polymorphic_parent && !reflection || !record.association(association).klass
-          (h[reflection] ||= []) << record
-        end
-        h
-      end
-    end
-
-    module ActiveRecordReflectionPatch
-      def check_preloadable!
-        return if scope && scope.arity < 0
-        super
+      mod.constants.map {|const| mod.const_get(const) }.each do |const|
+        apply_patches(const, install_base, base_module: base_module || mod)
       end
     end
 
     def self.install
-      ::ActiveRecord::Base.include(ActiveRecordBasePatch)
-
-      ::ActiveRecord::Relation.prepend(ActiveRecordRelationPatch)
-      ::ActiveRecord::Relation::Merger.prepend(ActiveRecordMergerPatch)
-
-      if ACTIVE_RECORD_VERSION >= ::Gem::Version.new('7.0.0')
-        ::ActiveRecord::Associations::Preloader::Branch.prepend(ActiveRecordPreloaderBranchPatch)
-      elsif ACTIVE_RECORD_VERSION >= ::Gem::Version.new('6.0.0')
-        ::ActiveRecord::Associations::Preloader.prepend(ActiveRecordPreloaderPatch)
-      end
-
-      ::ActiveRecord::Reflection::AssociationReflection.prepend(ActiveRecordReflectionPatch)
+      apply_patches(ActiveRecordPatches, ::ActiveRecord)
 
       return unless defined? ::Goldiloader
 
