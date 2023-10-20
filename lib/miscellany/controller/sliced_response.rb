@@ -187,6 +187,7 @@ module Miscellany
       def sliced_items
         @sliced_items ||= begin
           if items.is_a?(Array)
+            # TODO Can we apply sorting?
             start, finish = slice_bounds
             if start && finish
               items[start...finish]
@@ -194,6 +195,7 @@ module Miscellany
               items
             end
           elsif items.is_a?(Proc)
+            # TODO Can we apply sorting?
             items.call(self)
           elsif items.is_a?(ActiveRecord::Relation)
             offset, limit = slice_bounds
@@ -218,8 +220,7 @@ module Miscellany
       end
 
       def sort_sql
-        sorts = [ *Array(self.sort) ]
-        sorts.push(*options[:sort_parser]&.default_sorts)
+        sorts = [ *Array(self.sort), *options[:sort_parser]&.default_sorts]
         sorts.compact!
 
         return nil unless sorts.present?

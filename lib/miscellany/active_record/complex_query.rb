@@ -47,6 +47,7 @@ module Miscellany
       end
       psql += " LIMIT #{length} OFFSET #{start}"
       records = ActiveRecord::Base.connection.exec_query(psql).to_a
+      records = records.map(&:with_indifferent_access)
       augment_batch(records)
       records
     end
@@ -62,6 +63,7 @@ module Miscellany
         batch = ActiveRecord::Base.connection.exec_query(
           "SELECT * FROM #{tbl} LIMIT #{of} OFFSET #{offset}",
         )
+        batch = batch.map(&:with_indifferent_access)
         augment_batch(batch)
         yield batch
         offset += of
@@ -128,14 +130,40 @@ module Miscellany
       filters.flatten.select(&:present?).map { |q| "(#{q})" }.join(' AND ').presence || '1=1'
     end
 
-    def date_filter(column, key)
-      if filters["#{key}_end"].present? && filters["#{key}_start"].present?
-        "#{column} BETWEEN '#{DateTime.parse(filters["#{key}_start"]).beginning_of_day}' AND '#{DateTime.parse(filters["#{key}_end"]).end_of_day}'"
-      elsif filters["#{key}_start"].present?
-        "#{column} >= '#{DateTime.parse(filters["#{key}_start"]).beginning_of_day}'"
-      elsif filters["#{key}_end"].present?
-        "#{column} <= '#{DateTime.parse(filters["#{key}_end"]).end_of_day}'"
+    def date_filter(column, range, timezone: nil)
+      range = _parse_datetime_range(range)
+
+      range = range.map{|dt| dt&.in_time_zone(timezone) } if timezone.present?
+      range[0] = range[0]&.beginning_of_day
+      range[1] = range[1]&.end_of_day
+
+      datetime_filter(column, range)
+    end
+
+    def datetime_filter(column, range)
+      range = _parse_datetime_range(range)
+
+      start_date = range[0]
+      end_date = range[1]
+
+      if end_date.present? && start_date.present?
+        "#{column} BETWEEN '#{start_date}' AND '#{end_date}'"
+      elsif start_date.present?
+        "#{column} >= '#{start_date}'"
+      elsif end_date.present?
+        "#{column} <= '#{end_date}'"
       end
+    end
+
+    def _parse_datetime_range(range)
+      range = [filters["#{key}_start"], filters["#{key}_end"]] if range.is_a?(String) || range.is_a?(Symbol)
+      range = range.map{|v| _parse_datetime(v)}
+      range
+    end
+
+    def _parse_datetime(value)
+      return DateTime.parse(value) if value.is_a?(String)
+      value
     end
   end
 end
