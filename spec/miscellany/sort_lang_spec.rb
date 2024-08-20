@@ -30,14 +30,17 @@ describe Miscellany::SortLang do
     end
   end
 
-  describe ".sqlize" do
+  describe ".distinct_sorts" do
     it "only includes each sort key once" do
-      expect(Miscellany::SortLang.sqlize([
+      distinct = Miscellany::SortLang.distinct_sorts([
         { column: "created_at", order: "ASC" },
         { column: "created_at", order: "DESC" },
-      ])).to eql "created_at ASC NULLS FIRST"
+      ])
+      expect(Miscellany::SortLang.sqlize(distinct)).to eql "created_at ASC NULLS FIRST"
     end
+  end
 
+  describe ".sqlize" do
     describe "nulls: option" do
       it "accepts a nulls: option" do
         expect(Miscellany::SortLang.sqlize([

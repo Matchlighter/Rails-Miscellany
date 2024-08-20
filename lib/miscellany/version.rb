@@ -1,3 +1,3 @@
 module Miscellany
-  VERSION = "0.1.22".freeze
+  VERSION = "0.1.24".freeze
 end

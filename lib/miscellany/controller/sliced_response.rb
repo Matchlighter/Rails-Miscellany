@@ -202,6 +202,18 @@ module Miscellany
             limit -= offset unless limit.nil?
 
             query = items
+
+            applied_sorts.each do |sort|
+              # TODO Throw an error if joins: is present on a non-AR::Relation?
+              if sort[:joins].is_a?(ActiveRecord::Relation)
+                query = query.merge(sort[:joins])
+              elsif sort[:joins].is_a?(Proc)
+                query = sort[:joins].call(query)
+              elsif sort[:joins].present?
+                query = query.joins(sort[:joins])
+              end
+            end
+
             sort_clause = sort_sql
             query = query.order(Arel.sql(sort_clause)) if sort_clause.present?
 
@@ -219,13 +231,19 @@ module Miscellany
         [slice_start, slice_end == -1 ? nil : slice_end]
       end
 
+      def applied_sorts
+        @applied_sorts ||= begin
+          sorts = [ *Array(self.sort), *options[:sort_parser]&.default_sorts]
+          sorts.compact!
+          sorts = Miscellany::SortLang.distinct_sorts(sorts)
+          sorts
+        end
+      end
+
       def sort_sql
-        sorts = [ *Array(self.sort), *options[:sort_parser]&.default_sorts]
-        sorts.compact!
+        return nil unless applied_sorts.present?
 
-        return nil unless sorts.present?
-
-        Miscellany::SortLang.sqlize(sorts)
+        Miscellany::SortLang.sqlize(applied_sorts)
       end
     end
   end

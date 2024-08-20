@@ -22,11 +22,11 @@ module Miscellany
       sort.compact
     end
 
-    def self.sqlize(sorts)
+    def self.distinct_sorts(sorts)
       seen_sorts = Set.new
 
       # Only include each sort key/"column" once
-      sorts = sorts.select do |sort|
+      sorts.select do |sort|
         sid = sort[:key] || sort[:column]
         next true unless sid.present?
 
@@ -37,7 +37,9 @@ module Miscellany
           true
         end
       end
+    end
 
+    def self.sqlize(sorts)
       sorts.map do |sort|
         order = sort[:order] || 'ASC'
         if sort[:column].is_a?(Proc)
