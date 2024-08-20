@@ -203,12 +203,12 @@ module Miscellany
 
       base_module ||= mod
 
-      if mod.name.ends_with? "Patch"
+      if mod.name.end_with? "Patch"
         base_full_name = base_module.to_s
         mod_full_name = mod.to_s
         mod_rel_name = mod_full_name.sub(base_full_name, '')
         mod_rel_bits = mod_rel_name.split('::').select(&:present?).map do |bit|
-          bit.ends_with?('Patch') ? bit[0..-6] : bit
+          bit.end_with?('Patch') ? bit[0..-6] : bit
         end
         final_mod_name = [install_base, *mod_rel_bits].select(&:present?).join("::")
         install_mod = final_mod_name.constantize
