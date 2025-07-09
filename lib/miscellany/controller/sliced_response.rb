@@ -173,7 +173,7 @@ module Miscellany
       def total_item_count
         @total_item_count ||= options[:total_count] || begin
           if items.is_a?(ActiveRecord::Relation)
-            items.except(:select).count
+            items.model.from(items).count
           elsif items.respond_to?(:count)
             items.count
           elsif defined?(Miscellany::ComplexQuery) && items.is_a?(Miscellany::ComplexQuery)
