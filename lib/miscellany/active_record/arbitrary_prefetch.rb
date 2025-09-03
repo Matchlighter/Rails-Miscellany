@@ -104,7 +104,12 @@ module Miscellany
         def add_prefetches!(kwargs)
           return unless kwargs.present?
 
-          assert_mutability!
+          if Rails.version < "7.2"
+            assert_mutability!
+          else
+            assert_modifiable!
+          end
+
           @values[:prefetches] ||= {}
           kwargs.each do |attr, opts|
             @values[:prefetches][attr] = normalize_prefetch_options(attr, opts)
@@ -227,6 +232,11 @@ module Miscellany
 
     def self.install
       apply_patches(ActiveRecordPatches, ::ActiveRecord)
+
+      begin
+        require "goldiloader"
+      rescue LoadError
+      end
 
       return unless defined? ::Goldiloader
 
