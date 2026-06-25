@@ -6,12 +6,11 @@ module Miscellany
     end
 
     def max_size=(size)
-      raise ArgumentError.new(:max_size) if @max_size < 1
+      raise ArgumentError.new(:max_size) if size < 1
       @max_size = size
-      if @max_size < @data.size
-        @data.keys[0..@max_size-@data.size].each do |k|
-          @data.delete(k)
-        end
+      # Evict least-recently-used entries (oldest first) until we fit.
+      while @data.size > @max_size
+        @data.delete(@data.first[0])
       end
     end
 
@@ -43,7 +42,7 @@ module Miscellany
     end
 
     def each
-      @data.reverse.each do |pair|
+      to_a.each do |pair|
         yield pair
       end
     end

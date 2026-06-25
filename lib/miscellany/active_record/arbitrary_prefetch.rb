@@ -104,7 +104,7 @@ module Miscellany
         def add_prefetches!(kwargs)
           return unless kwargs.present?
 
-          if Rails.version < "7.2"
+          if ACTIVE_RECORD_VERSION < ::Gem::Version.new('7.2.0')
             assert_mutability!
           else
             assert_modifiable!

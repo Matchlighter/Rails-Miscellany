@@ -23,13 +23,18 @@ Gem::Specification.new do |spec|
   spec.require_paths = ['lib']
 
   spec.add_dependency 'rails', '>= 5', '< 9.0'
+  # csv stopped being a default gem in Ruby 3.4; BatchingCsvProcessor requires it.
+  spec.add_dependency 'csv'
   # spec.add_dependency 'activerecord', '>= 5', '< 6.3'
   # spec.add_dependency 'activesupport', '>= 5', '< 6.3'
 
   spec.add_development_dependency 'rake'
+  spec.add_development_dependency 'appraisal', '~> 2.4'
   spec.add_development_dependency 'database_cleaner', '>= 1.2'
   spec.add_development_dependency 'rspec', '~> 3'
-  spec.add_development_dependency 'sqlite3', '~> 1.3'
+  # Loosened so Rails 8 (which needs sqlite3 ~> 2.1) can resolve. Each
+  # Appraisal pins the exact sqlite3 line its Rails version requires.
+  spec.add_development_dependency 'sqlite3', '>= 1.3'
   spec.add_development_dependency 'with_model'
   spec.add_development_dependency 'goldiloader'
 end

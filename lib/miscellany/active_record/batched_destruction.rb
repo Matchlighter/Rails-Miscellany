@@ -1,5 +1,5 @@
 module Miscellany
-  module BatchedDestruction
+  module BatchedDestruction # TODO Write Specs
     extend ActiveSupport::Concern
 
     included do

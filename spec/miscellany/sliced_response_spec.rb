@@ -109,10 +109,10 @@ describe Miscellany::SlicedResponse do
       include_examples "sortable"
 
       it "uses the ComplexQuery sort_parser if valid_sorts is not given" do
-        r = subject.sliced_json(source, { **slice_params, sort: "created_at" }, {})
+        r = subject.sliced_json(source, { **slice_params, sort: "created_at" })
         expect(r[:sort]).to eql nil
 
-        r = subject.sliced_json(source, { **slice_params, sort: "title" }, {})
+        r = subject.sliced_json(source, { **slice_params, sort: "title" })
         expect(r[:sort]).to eql "title ASC"
       end
 

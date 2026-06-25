@@ -56,7 +56,7 @@ module Miscellany
       conn = ActiveRecord::Base.connection
       tbl = "#{self.class.name.split('::').last.underscore}_#{SecureRandom.hex[0..10]}"
 
-      conn.execute("CREATE TEMP TABLE #{tbl} AS (#{sql})")
+      conn.execute("CREATE TEMP TABLE #{tbl} AS #{sql}")
 
       offset = 0
       loop do
@@ -86,8 +86,9 @@ module Miscellany
     end
 
     def valid_sort?(sort)
-      sort_parser.valid?(sort)
       return false unless sort.present?
+
+      sort_parser.valid?(sort)
     end
 
     protected
@@ -111,7 +112,10 @@ module Miscellany
     end
 
     def valid_sorts
-      return self.class::SORTABLE_COLUMNS.with_indifferent_access if defined?(self.class::SORTABLE_COLUMNS)
+      # SortLang::Parser expects an array of sort specs (strings and/or hashes);
+      # wrap the SORTABLE_COLUMNS hash so it is treated as a single hash entry
+      # rather than iterated into [key, value] pairs.
+      return [self.class::SORTABLE_COLUMNS.with_indifferent_access] if defined?(self.class::SORTABLE_COLUMNS)
     end
 
     def sort_parser

@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    name: Ruby ${{ matrix.ruby }} / ${{ matrix.appraisal }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Each Rails line is paired only with Ruby versions it supports.
+        include:
+          # Rails 6.1
+          - { ruby: '2.7', appraisal: rails-6.1 }
+          - { ruby: '3.0', appraisal: rails-6.1 }
+          - { ruby: '3.2', appraisal: rails-6.1 }
+          # Rails 7.0
+          - { ruby: '3.0', appraisal: rails-7.0 }
+          - { ruby: '3.1', appraisal: rails-7.0 }
+          - { ruby: '3.2', appraisal: rails-7.0 }
+          # Rails 7.1
+          - { ruby: '3.1', appraisal: rails-7.1 }
+          - { ruby: '3.2', appraisal: rails-7.1 }
+          - { ruby: '3.3', appraisal: rails-7.1 }
+          # Rails 7.2
+          - { ruby: '3.2', appraisal: rails-7.2 }
+          - { ruby: '3.3', appraisal: rails-7.2 }
+          - { ruby: '3.4', appraisal: rails-7.2 }
+          # Rails 8.0
+          - { ruby: '3.2', appraisal: rails-8.0 }
+          - { ruby: '3.3', appraisal: rails-8.0 }
+          - { ruby: '3.4', appraisal: rails-8.0 }
+          # Rails 8.1
+          - { ruby: '3.2', appraisal: rails-8.1 }
+          - { ruby: '3.3', appraisal: rails-8.1 }
+          - { ruby: '3.4', appraisal: rails-8.1 }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Installs the base bundle (which provides appraisal). Bundler honors each
+      # gem's required_ruby_version, so this resolves compatibly on older Rubies.
+      - name: Set up Ruby ${{ matrix.ruby }}
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+          bundler-cache: true
+
+      # Gemfiles are generated here rather than committed.
+      - name: Generate appraisal gemfiles
+        run: bundle exec appraisal generate
+
+      - name: Install dependencies for ${{ matrix.appraisal }}
+        run: bundle exec appraisal ${{ matrix.appraisal }} bundle install
+
+      - name: Run specs
+        run: bundle exec appraisal ${{ matrix.appraisal }} rspec

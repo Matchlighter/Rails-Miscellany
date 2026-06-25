@@ -49,7 +49,8 @@ describe Miscellany::ComputedColumns do
   end
 
   it 'generally works' do
-    ActiveRecord::Base.verbose_query_logs = true
+    # Debug aid only; removed from ActiveRecord in Rails 7.1.
+    ActiveRecord::Base.verbose_query_logs = true if ActiveRecord::Base.respond_to?(:verbose_query_logs=)
     posts = Post.with_computed(:favorite_comments_count)
     expect(posts.except(:select).count).to eq 3
     expect(posts[0].favorite_comments_count).to eq 1

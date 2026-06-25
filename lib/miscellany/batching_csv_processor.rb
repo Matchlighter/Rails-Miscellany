@@ -1,3 +1,5 @@
+require 'csv'
+
 module Miscellany
   class BatchingCsvProcessor
     attr_accessor :csv, :file_name
@@ -45,7 +47,7 @@ module Miscellany
     end
 
     def batch_rows_to_models(rows)
-      rows.map { |row| build_model_from_row(row) }.reject! { |inst| inst.nil? || !inst.changed? }
+      rows.map { |row| build_model_from_row(row) }.reject { |inst| inst.nil? || !inst.changed? }
     end
 
     def build_model_from_row(row)
@@ -59,7 +61,7 @@ module Miscellany
       nil
     rescue StandardError => err
       log_line_error('An Internal Error Occurred', row[:line_number], exception: err)
-      Raven.capture_exception(err)
+      Raven.capture_exception(err) if defined?(Raven)
       nil
     end
 

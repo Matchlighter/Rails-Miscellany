@@ -100,7 +100,7 @@ module Miscellany
             begin
               slice[:sort] = options[:sort_parser]&.parse(arg[:sort], ignore_errors: true, default: true)
             rescue Miscellany::SortLang::Parser::SortParsingError => e
-              raise HttpErrorHandling::HttpError, message: e.message
+              raise HttpErrorHandling::HttpError.new(message: e.message)
             end
           end
 
@@ -110,10 +110,10 @@ module Miscellany
           end
 
           if slice[:slice_end] == -1
-            raise HttpErrorHandling::HttpError, message: "cannot request whole collection" unless options[:allow_all]
+            raise HttpErrorHandling::HttpError.new(message: "cannot request whole collection") unless options[:allow_all]
           else
             if options[:max_size] && (slice[:slice_end] - slice[:slice_start]) > [options[:max_size], options[:default_size]].max
-              raise HttpErrorHandling::HttpError, message: "cannot request more than #{options[:max_size]} objects"
+              raise HttpErrorHandling::HttpError.new(message: "cannot request more than #{options[:max_size]} objects")
             end
           end
         end
