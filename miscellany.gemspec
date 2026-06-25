@@ -32,9 +32,6 @@ Gem::Specification.new do |spec|
   spec.add_development_dependency 'appraisal', '~> 2.4'
   spec.add_development_dependency 'database_cleaner', '>= 1.2'
   spec.add_development_dependency 'rspec', '~> 3'
-  # Loosened so Rails 8 (which needs sqlite3 ~> 2.1) can resolve. Each
-  # Appraisal pins the exact sqlite3 line its Rails version requires.
-  spec.add_development_dependency 'sqlite3', '>= 1.3'
   spec.add_development_dependency 'with_model'
   spec.add_development_dependency 'goldiloader'
 end

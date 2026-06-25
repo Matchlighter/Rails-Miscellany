@@ -15,7 +15,6 @@ jobs:
         # Each Rails line is paired only with Ruby versions it supports.
         include:
           # Rails 6.1
-          - { ruby: '2.7', appraisal: rails-6.1 }
           - { ruby: '3.0', appraisal: rails-6.1 }
           - { ruby: '3.2', appraisal: rails-6.1 }
           # Rails 7.0
