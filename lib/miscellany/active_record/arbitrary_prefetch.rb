@@ -1,9 +1,10 @@
 # Add support for creating arbitrary associations when using ActiveRecord
 # Adds a `prefetch` method to ActiveRecord Queries.
 #   This method accepts a Hash. The keys of the Hash represent how the Association will be made available.
-#   The values of the Hash may be an array of [Symbol, Relation] or another (filtered) Relation.
+#   The values of the Hash may be an array of [Symbol, Relation or Proc], a Proc, or another (filtered) Relation.
 #   Objects are queried from an existing Association on the model. This Association is detemrined
-#   by either the Symbol when an array is passed, or by finding an Assoication for the passed Relation's model
+#   by either the Symbol when an array is passed, the association named in a Proc,
+#   or by finding an Assoication for the passed Relation's model
 module Miscellany
   module ArbitraryPrefetch
     ACTIVE_RECORD_VERSION = ::Gem::Version.new(::ActiveRecord::VERSION::STRING).release
@@ -66,6 +67,43 @@ module Miscellany
       end
     end
 
+    # Evaluates a prefetch scope block such as `->{ comments.where(favorite: true) }`.
+    # Association names answer with an unscoped Relation on the association's target class
+    # and record which association the prefetch is based off of. Everything else falls
+    # through to the block's original `self`, so surrounding helper methods still work.
+    class ScopeResolver < BasicObject
+      attr_reader :source_key
+
+      def initialize(model, fallback)
+        @model = model
+        @fallback = fallback
+        @source_key = nil
+      end
+
+      def __evaluate__(block)
+        [instance_exec(&block), @source_key]
+      end
+
+      def method_missing(name, *args, &block)
+        reflection = @model.reflections[name.to_s]
+
+        if reflection.nil?
+          unless @fallback
+            ::Kernel.raise ::NameError, "undefined local variable or method `#{name}' for prefetch scope on #{@model}"
+          end
+          return @fallback.__send__(name, *args, &block)
+        end
+
+        if @source_key && @source_key != name.to_sym
+          ::Kernel.raise ::ArgumentError,
+            "prefetch scope references two associations (#{@source_key} and #{name}); it may only build off of one"
+        end
+
+        @source_key = name.to_sym
+        reflection.klass.all
+      end
+    end
+
     module ActiveRecordPatches
       module BasePatch
         extend ActiveSupport::Concern
@@ -118,8 +156,10 @@ module Miscellany
         end
 
         def normalize_prefetch_options(attr, opts)
+          opts = resolve_prefetch_scope(opts) if opts.is_a?(Proc)
+
           norm = if opts.is_a?(Array)
-              { relation: opts[0], queryset: opts[1] }
+              { relation: opts[0], queryset: prefetch_queryset(opts[0], opts[1]) }
             elsif opts.is_a?(ActiveRecord::Relation)
               rel_name = opts.model.name.underscore
               rel = (model.reflections[rel_name] || model.reflections[rel_name.pluralize])&.name
@@ -132,6 +172,28 @@ module Miscellany
           norm[:type] ||= (attr.to_s.pluralize == attr.to_s) ? :has_many : :has_one
 
           norm
+        end
+
+        # `->{ comments.where(favorite: true) }` - pull both the base association and the
+        # filtered queryset out of the block. Blocks that never name an association
+        # (`->{ Comment.where(...) }`) fall back to inferring it from the Relation's model.
+        def resolve_prefetch_scope(block)
+          raise ArgumentError, "prefetch scopes do not accept arguments" if block.arity > 0
+
+          fallback = block.binding.receiver rescue nil
+          queryset, source_key = ScopeResolver.new(model, fallback).__evaluate__(block)
+          source_key ? [source_key, queryset] : queryset
+        end
+
+        # `[:comments, ->{ where(favorite: true) }]` - evaluate the block against the
+        # named association, the same way a Rails association scope is evaluated.
+        def prefetch_queryset(relation, queryset)
+          return queryset unless queryset.is_a?(Proc)
+
+          reflection = model.reflections[relation.to_s]
+          raise ArgumentError, "#{model} has no association named #{relation}" unless reflection
+
+          reflection.klass.all.instance_exec(&queryset)
         end
       end
 

@@ -37,6 +37,51 @@ describe Miscellany::ArbitraryPrefetch do
       end
     end
 
+    context 'given a proc' do
+      it 'builds off of the association named in the proc' do
+        posts = Post.prefetch(favorite_comment: -> { comments.where(favorite: true) })
+        expect(posts[0].favorite_comment).to be_a Comment
+        expect(posts[0].favorite_comment.favorite).to eq true
+      end
+
+      it 'works with a plural key' do
+        posts = Post.prefetch(non_favorite_comments: -> { comments.where(favorite: nil) })
+        expect(posts[0].non_favorite_comments.length).to eq 4
+      end
+
+      it 'falls back to the Relation model when no association is named' do
+        posts = Post.prefetch(favorite_comment: -> { Comment.where(favorite: true) })
+        expect(posts[0].favorite_comment).to be_a Comment
+      end
+
+      it 'resolves non-association methods against the enclosing scope' do
+        def favorite_flag = true
+
+        posts = Post.prefetch(favorite_comment: -> { comments.where(favorite: favorite_flag) })
+        expect(posts[0].favorite_comment).to be_a Comment
+      end
+
+      it 'rejects a proc that takes arguments' do
+        expect {
+          Post.prefetch(favorite_comment: ->(scope) { scope })
+        }.to raise_error(ArgumentError, /do not accept arguments/)
+      end
+    end
+
+    context 'given a tuple with a proc' do
+      it 'evaluates the proc against the named association' do
+        posts = Post.prefetch(favorite_comment: [:comments, -> { where(favorite: true) }])
+        expect(posts[0].favorite_comment).to be_a Comment
+        expect(posts[0].favorite_comment.favorite).to eq true
+      end
+
+      it 'raises on an unknown association' do
+        expect {
+          Post.prefetch(favorite_comment: [:nope, -> { where(favorite: true) }])
+        }.to raise_error(ArgumentError, /no association named nope/)
+      end
+    end
+
     context 'prefetch is plural' do
       it 'returns an Array' do
         posts = Post.prefetch(non_favorite_comments: Comment.where(favorite: nil))
@@ -136,5 +181,11 @@ describe Miscellany::ArbitraryPrefetch do
     end
 
     include_examples "general specs"
+
+    it 'rejects a proc that names two associations' do
+      expect {
+        Post.prefetch(favorite_comment: -> { comments.where(id: interims.select(:comment_id)) })
+      }.to raise_error(ArgumentError, /may only build off of one/)
+    end
   end
 end

@@ -16,14 +16,17 @@ Prefetches take an existing association as a base, and further filter from it.
 The created association is made available on model instances just as a normal association is and the added collections leverage Preloading so they will not cause N+1 issues.
 
 `prefetch` is called with key-value pairs, where the key is the name of the created association (and thus how it may be accessed on model instances). The plurality of the key is significant and will be used to determine if the created association is 1:1, or 1:M.
-The value may be either a tuple or a Relation.
-If a tuple is used, it is expected to be `[:existing_association, OtherModel.where(...)]`. If just a Relation is given, the model's name will be used to find the association to base off of.
+The value may be a tuple, a Relation, or a proc.
+If a tuple is used, it is expected to be `[:existing_association, OtherModel.where(...)]`. The second element may also be a proc, which is evaluated against the named association just like a Rails association scope: `[:existing_association, ->{ where(...) }]`.
+If just a Relation is given, the model's name will be used to find the association to base off of.
+If a proc is given, name the association inside it: `->{ existing_association.where(...) }`. The association it names becomes the base, and the rest of the chain filters it. The proc takes no arguments, and it may only name one association. Methods that aren't associations still resolve against the enclosing scope, so surrounding helpers and local variables work as usual. A proc that names no association (`->{ OtherModel.where(...) }`) behaves like the plain Relation form.
+
+Procs are evaluated when `prefetch` is called, not when the query runs.
 
 ## Examples
 
 ### Example 1
 ```ruby
-# Based off of a case in learning-teams-lti
 enrs = Enrollment.prefetch(
     period_score: Score.for_grading_period(grading_period),
     period_work_habits_score: WorkHabitsScore.for_grading_period(grading_period),
@@ -40,8 +43,6 @@ Without using a `prefetch`, this would either be a N+1, or we'd need to come up 
 
 ### Example 2
 ```ruby
-# Based off of a case in canvas-group-enrollment
-
 active_rule_enrollments_base = RuleEnrollment.kept
     .distinct(:rule_id)
     .joins(:rule)
@@ -70,4 +71,18 @@ end
 ```
 
 As can be seen, nesting is also supported.
+
+### Example 3
+```ruby
+# The proc form names the base association inline
+posts = Post.prefetch(
+    favorite_comment: -> { comments.where(favorite: true) },
+    recent_comments: -> { comments.where(created_at: 1.week.ago..) },
+)
+
+# Equivalent to the tuple form
+posts = Post.prefetch(
+    favorite_comment: [:comments, Comment.where(favorite: true)],
+)
+```
 
