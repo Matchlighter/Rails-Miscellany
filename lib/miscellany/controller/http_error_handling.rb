@@ -52,10 +52,12 @@ module Miscellany
       status = err.status if err.is_a?(HttpError) && status.nil?
       status ||= 400
       message ||= err.message
-      message.message.call(err) if message.is_a?(Proc)
+      message = message.call(err) if message.is_a?(Proc)
       response_json = { status: status }
       response_json[:message] = message if message.present?
-      response_json.merge!(err.extra)
+      # rescue_with_http_error routes ordinary exceptions here too, and only
+      # HttpError carries extra.
+      response_json.merge!(err.extra) if err.respond_to?(:extra) && err.extra.present?
       render json: response_json, status: status
     end
   end

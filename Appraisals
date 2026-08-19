@@ -6,6 +6,10 @@
 appraise 'rails-6.1' do
   gem 'rails', '~> 6.1.0'
   gem 'sqlite3', '~> 1.4'
+  # ActiveSupport 6.1 relies on concurrent-ruby having required 'logger' for it;
+  # concurrent-ruby 1.3.5 dropped that, so loading active_support raises NameError.
+  # Rails fixed this on its side in 7.0.10, so only this line needs the pin.
+  gem 'concurrent-ruby', '< 1.3.5'
 end
 
 appraise 'rails-7.0' do

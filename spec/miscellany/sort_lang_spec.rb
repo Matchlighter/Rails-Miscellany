@@ -122,6 +122,39 @@ describe Miscellany::SortLang do
           {:column=>"created_at", :force_order=>false, :key=>"created_at"},
         ]
       end
+
+      # SlicedResponse surfaces these straight to API clients, so the message has
+      # to read as a sentence rather than a stringified Hash.
+      context "with ignore_errors: false" do
+        it "raises naming the unparseable sort" do
+          expect { subject.parse("not a sort!", ignore_errors: false) }
+            .to raise_error(Miscellany::SortLang::Parser::SortParsingError, /could not parse.*"not a sort!"/i)
+        end
+
+        it "raises naming the unknown column" do
+          expect { subject.parse("updated_at", ignore_errors: false) }
+            .to raise_error(Miscellany::SortLang::Parser::SortParsingError, /unknown sort column.*"updated_at"/i)
+        end
+
+        it "does not raise for a valid sort" do
+          expect { subject.parse("title DESC", ignore_errors: false) }.not_to raise_error
+        end
+      end
+    end
+
+    describe "#valid?" do
+      it "is true for a known column" do
+        expect(subject.valid?("title")).to be true
+        expect(subject.valid?("created_at DESC")).to be true
+      end
+
+      it "is false for an unknown column" do
+        expect(subject.valid?("updated_at")).to be false
+      end
+
+      it "is false for an unparseable sort" do
+        expect(subject.valid?("not a sort!")).to be false
+      end
     end
   end
 end

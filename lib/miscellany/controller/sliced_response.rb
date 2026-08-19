@@ -92,8 +92,17 @@ module Miscellany
             elsif arg[:slice].present?
               slice_bounds = arg[:slice].split(':').map(&:to_i)
             else
-              page_size = slice[:page_size] = (arg[:page_size] || options[:default_page_size]).to_i
-              page_number = slice[:page_number] = (arg[:page] || 1).to_i
+              # :default_page_size and :default_size are two names callers use for the
+              # same thing; honor either so a caller passing only one isn't left with 0.
+              default_page_size = options[:default_page_size] || options[:default_size]
+              page_size = slice[:page_size] = (arg[:page_size] || default_page_size).to_i
+              if page_size < 1
+                raise HttpErrorHandling::HttpError.new(message: "page_size must be at least 1")
+              end
+
+              # Clamped rather than rejected, so that a page past either end of the
+              # collection stays a valid (if empty) request. Matches ComplexQuery#page.
+              page_number = slice[:page_number] = [(arg[:page] || 1).to_i, 1].max
               slice_bounds = [(page_number - 1) * page_size, page_number * page_size]
             end
 

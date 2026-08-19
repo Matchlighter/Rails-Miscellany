@@ -91,13 +91,15 @@ module Miscellany
 
           if m.nil?
             next if ignore_errors
-            raise SortParsingError, message: 'Could not parse sort parameter'
+            # Passed positionally - `raise Klass, message: '...'` would hand the Hash
+            # itself to the exception and surface it as the message.
+            raise SortParsingError, "could not parse sort parameter: #{s.strip.inspect}"
           end
 
           resolved_sort = @sorts_map[m[1]]
           unless resolved_sort.present?
             next if ignore_errors
-            raise SortParsingError, message: 'Could not parse sort parameter'
+            raise SortParsingError, "unknown sort column: #{m[1].inspect}"
           end
 
           sort = resolved_sort.dup

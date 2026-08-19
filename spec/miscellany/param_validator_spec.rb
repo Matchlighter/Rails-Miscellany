@@ -113,6 +113,82 @@ describe Miscellany::ParamValidator do
       end
     end
 
+    describe 'an unsupported type' do
+      # A type with no coercion rule is a mistake in the validator definition,
+      # not bad user input, so it must fail loudly instead of silently nulling.
+      it 'raises, naming the type and the key' do
+        expect do
+          Miscellany::ParamValidator.check({ value: 'x' }) { p :value, type: Symbol }
+        end.to raise_error(Miscellany::ParamValidator::UnsupportedTypeError, /Symbol.*:value/)
+      end
+
+      it 'leaves the value untouched' do
+        params = { value: 'x' }
+        begin
+          Miscellany::ParamValidator.check(params) { p :value, type: Symbol }
+        rescue Miscellany::ParamValidator::UnsupportedTypeError
+          # asserted separately above
+        end
+        expect(params[:value]).to eq 'x'
+      end
+
+      it 'accepts a value that is already an instance of that type' do
+        expect_coercion(:already_a_symbol, Symbol, :already_a_symbol)
+      end
+    end
+
+    describe 'given positionally' do
+      def assert_positional(raw, expectation, &blk)
+        result = Miscellany::ParamValidator.assert({ value: raw }, handle: ->(_v) { raise 'Invalid' }, &blk)
+        expect(result[:value]).to eq expectation
+      end
+
+      it 'coerces just as the keyword form does' do
+        assert_positional('5', 5) { p :value, Integer }
+      end
+
+      it 'accepts a list of types' do
+        assert_positional('5', 5) { p :value, [Integer, String] }
+      end
+
+      it 'combines with flags in any order' do
+        assert_positional('5', 5) { p :value, :present, Integer }
+        assert_positional('5', 5) { p :value, Integer, :present }
+      end
+
+      it 'still rejects genuinely unrecognized arguments' do
+        expect do
+          Miscellany::ParamValidator.check({ value: '5' }) { p :value, Integer, String }
+        end.to raise_error(ArgumentError, /positional/)
+      end
+    end
+
+    describe 'BigDecimal' do
+      it 'coerces a decimal string' do
+        expect_coercion('12.34', BigDecimal, BigDecimal('12.34'))
+      end
+
+      it 'strips currency formatting' do
+        expect_coercion('$1,234.56', BigDecimal, BigDecimal('1234.56'))
+      end
+
+      # Routing through Float would silently truncate here, which defeats the
+      # point of asking for a BigDecimal.
+      it 'keeps digits beyond what a Float can hold' do
+        expect_coercion('1.234567890123456789', BigDecimal, BigDecimal('1.234567890123456789'))
+      end
+
+      it 'coerces a numeric value' do
+        expect_coercion(5, BigDecimal, BigDecimal(5))
+      end
+
+      it 'reports a validation error for a non-numeric string' do
+        expect_invalid do
+          p :some_string, type: BigDecimal
+        end
+      end
+    end
+
     describe ':bool' do
       it 'transforms booleans' do
         expect_coercion('t', :bool, true)
@@ -171,6 +247,27 @@ describe Miscellany::ParamValidator do
       expect_invalid do
         p :some_string, pattern: /^Steve$/
       end
+    end
+
+    # A matching pattern must not short-circuit the rest of the parameter.
+    it 'still applies the other checks when the pattern matches' do
+      expect_invalid do
+        p :some_string, pattern: /^Rob/, in: %w[Steve]
+      end
+    end
+
+    it 'reports the failing key when an earlier key matched' do
+      result = Miscellany::ParamValidator.check({ matches: 'Robert', fails: 'Steve' }) do
+        p %i[matches fails], pattern: /^Rob/
+      end
+      expect(result.serialize).to eq('fails' => ['must match pattern: /^Rob/'])
+    end
+
+    it 'does not discard errors collected for earlier keys' do
+      result = Miscellany::ParamValidator.check({ fails: 'Steve', matches: 'Robert' }) do
+        p %i[fails matches], pattern: /^Rob/
+      end
+      expect(result.serialize).to eq('fails' => ['must match pattern: /^Rob/'])
     end
   end
 

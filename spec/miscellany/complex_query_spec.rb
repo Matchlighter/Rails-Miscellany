@@ -13,6 +13,16 @@ class WidgetReportQuery < Miscellany::ComplexQuery
   def build_count_query
     "SELECT COUNT(*) AS count FROM #{options[:table]}"
   end
+
+  # Subclasses are how the protected filter helpers are actually reached, so the
+  # specs exercise them the same way.
+  def date_filter_for(*args, **kwargs)
+    date_filter(*args, **kwargs)
+  end
+
+  def sanitize_sql_for(*args)
+    sanitize_sql(*args)
+  end
 end
 
 RSpec.describe Miscellany::ComplexQuery do
@@ -98,6 +108,20 @@ RSpec.describe Miscellany::ComplexQuery do
     it 'can be run repeatedly (temp table is dropped each time)' do
       expect { 2.times { query.in_batches(of: 2) { |_b| } } }.not_to raise_error
     end
+
+    # Rails' in_batches never hands the block an empty batch; neither should this.
+    it 'does not yield a trailing empty batch' do
+      sizes = []
+      query.in_batches(of: 2) { |batch| sizes << batch.size }
+      expect(sizes).to eq [2, 1]
+    end
+
+    it 'does not yield at all when there are no records' do
+      Widget.delete_all
+      sizes = []
+      query.in_batches(of: 2) { |batch| sizes << batch.size }
+      expect(sizes).to eq []
+    end
   end
 
   describe '#find_each' do
@@ -136,6 +160,42 @@ RSpec.describe Miscellany::ComplexQuery do
 
     it 'falls back to 1=1 when nothing is present' do
       expect(q.send(:join_filters, nil, false)).to eq '1=1'
+    end
+  end
+
+  describe '#date_filter' do
+    let(:dated) { query(filters: { 'created_start' => '2024-01-01', 'created_end' => '2024-01-31' }) }
+
+    # The Symbol/String shorthand looks the range up in `filters` by prefix.
+    it 'resolves a Symbol key against filters' do
+      expect(dated.date_filter_for('created_at', :created))
+        .to match(/created_at BETWEEN '2024-01-01T00:00:00.*' AND '2024-01-31T23:59:59/)
+    end
+
+    it 'resolves a String key against filters' do
+      expect(dated.date_filter_for('created_at', 'created'))
+        .to match(/created_at BETWEEN '2024-01-01T00:00:00.*' AND '2024-01-31T23:59:59/)
+    end
+
+    it 'accepts an explicit range, expanding it to whole days' do
+      expect(query.date_filter_for('created_at', ['2024-01-01', '2024-01-31']))
+        .to match(/created_at BETWEEN '2024-01-01T00:00:00.*' AND '2024-01-31T23:59:59/)
+    end
+
+    it 'builds a one-sided clause when the filter only has a start' do
+      q = query(filters: { 'created_start' => '2024-01-01' })
+      expect(q.date_filter_for('created_at', :created)).to match(/created_at >= '2024-01-01T00:00:00/)
+    end
+  end
+
+  describe '#sanitize_sql' do
+    it 'quotes a bind value' do
+      expect(query.sanitize_sql_for('name = ?', "O'Brien")).to eq %(name = 'O''Brien')
+    end
+
+    it 'expands an IN list' do
+      expect(query.sanitize_sql_for('name IN (?)', %w[apple banana]))
+        .to eq "name IN ('apple','banana')"
     end
   end
 

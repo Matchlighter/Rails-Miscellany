@@ -64,10 +64,12 @@ module Miscellany
           "SELECT * FROM #{tbl} LIMIT #{of} OFFSET #{offset}",
         )
         batch = batch.map(&:with_indifferent_access)
+        # Checked before yielding, so consumers never see an empty batch.
+        break if batch.empty?
+
         augment_batch(batch)
         yield batch
         offset += of
-        break if batch.empty?
       end
     ensure
       conn.execute("DROP TABLE IF EXISTS #{tbl}")
@@ -123,7 +125,9 @@ module Miscellany
     end
 
     def sanitize_sql(*args)
-      ApplicationRecord.sanitize_sql(args)
+      # ActiveRecord::Base rather than ApplicationRecord: the latter is a host-app
+      # constant this gem cannot count on existing.
+      ActiveRecord::Base.sanitize_sql(args)
     end
 
     def filters
@@ -160,7 +164,8 @@ module Miscellany
     end
 
     def _parse_datetime_range(range)
-      range = [filters["#{key}_start"], filters["#{key}_end"]] if range.is_a?(String) || range.is_a?(Symbol)
+      # A String/Symbol names a pair of "<key>_start"/"<key>_end" filters.
+      range = [filters["#{range}_start"], filters["#{range}_end"]] if range.is_a?(String) || range.is_a?(Symbol)
       range = range.map{|v| _parse_datetime(v)}
       range
     end

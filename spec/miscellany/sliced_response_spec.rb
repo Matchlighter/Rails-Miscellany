@@ -122,6 +122,35 @@ describe Miscellany::SlicedResponse do
       end
     end
 
+    context "with out-of-range paging" do
+      let(:source) { ARModel.all }
+
+      # A page_size of 0 used to divide by zero while computing page_count.
+      it "rejects a page_size below 1" do
+        [0, -5].each do |bad|
+          expect do
+            subject.sliced_json(source, { page_size: bad }, **slice_config)
+          end.to raise_error(Miscellany::HttpErrorHandling::HttpError, /page_size must be at least 1/)
+        end
+      end
+
+      # A page below 1 used to reach SQL as a negative OFFSET. ComplexQuery#page
+      # already clamps, so the slice does too.
+      it "clamps a page below 1 to the first page" do
+        [0, -1].each do |bad|
+          r = subject.sliced_json(source, { page: bad }, **slice_config)
+          expect(r[:page]).to eql 1
+          expect(r[:slice_start]).to eql 0
+          expect_items(r, ARModel.all.limit(3))
+        end
+      end
+
+      it "still reports page_count for a valid page_size" do
+        r = subject.sliced_json(source, { page_size: 4 }, **slice_config)
+        expect(r[:page_count]).to eql 3
+      end
+    end
+
     it "enforces allow_all" do
       expect do
         subject.sliced_json(ARModel.all, { page: "all" }, **slice_config)

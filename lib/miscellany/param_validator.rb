@@ -5,6 +5,20 @@ module Miscellany
 
     delegate_missing_to :context
 
+    # Raised when a `type:` has no coercion rule at all. That is a mistake in the
+    # validator definition rather than bad input, so it escapes the ArgumentError
+    # rescue in `coerce_type` instead of becoming a validation error.
+    class UnsupportedTypeError < ArgumentError; end
+
+    # Returned by `coerce_single_type` when no coercion rule matched. Distinct from
+    # nil, which is a legitimate coerced value.
+    UNSUPPORTED_TYPE = Object.new.freeze
+
+    # Significant digits used when coercing a non-String to BigDecimal, where
+    # BigDecimal() requires an explicit precision. Strings pass 0 instead and are
+    # parsed exactly.
+    DEFAULT_PRECISION = Float::DIG + 1
+
     TIME_TYPES = [Date, DateTime, Time].freeze
 
     CHECKS = %i[type specified present default transform in block items pattern].freeze
@@ -93,7 +107,9 @@ module Miscellany
         next if params[pk].nil?
 
         run_check[:pattern] do |pattern|
-          return true if params[pk].to_s.match?(pattern)
+          # `next`, not `return` - a `return` here would exit `parameter` entirely,
+          # skipping the remaining checks and the final `@errors.merge!`.
+          next true if params[pk].to_s.match?(pattern)
 
           "must match pattern: #{pattern.inspect}"
         end
@@ -242,9 +258,20 @@ module Miscellany
 
       types = Array(opts[:type])
       types.each do |t|
-        params[key] = coerce_single_type(value, t, opts)
+        coerced = begin
+                    coerce_single_type(value, t, opts)
+                  rescue ArgumentError, TypeError
+                    next
+                  end
+
+        # Raised outside the rescue above so it reaches the caller rather than
+        # being reported as an ordinary coercion failure.
+        if coerced.equal?(UNSUPPORTED_TYPE)
+          raise UnsupportedTypeError, "unsupported type #{t.inspect} for #{key.inspect}"
+        end
+
+        params[key] = coerced
         return true
-      rescue ArgumentError, TypeError => err
       end
 
       "'#{value}' could not be cast to a #{types.join(' or a ')}"
@@ -302,10 +329,15 @@ module Miscellany
 
       # BigDecimals
       if type == BigDecimal
-        param = param.delete('$,').strip.to_f if param.is_a?(String)
-        return BigDecimal(param, (options[:precision] || DEFAULT_PRECISION))
+        # Strings are handed to BigDecimal directly rather than via to_f, so that
+        # digits beyond Float's range survive. A precision of 0 tells BigDecimal to
+        # take it from the literal.
+        return BigDecimal(param.delete('$,').strip, options[:precision] || 0) if param.is_a?(String)
+
+        return BigDecimal(param, options[:precision] || DEFAULT_PRECISION)
       end
-      nil
+
+      UNSUPPORTED_TYPE
     end
 
     def normalize_opts(*args, **kwargs, &blk)
@@ -315,7 +347,8 @@ module Miscellany
         type = args.delete(:items) ? :all_items : :all_block
         set_hash_key(norm, type, blk)
       end
-      set_hash_key(norm, :type, args.pop(0)) if args.present?
+      # `args.pop`, not `args.pop(0)` - the latter removes nothing and returns [].
+      set_hash_key(norm, :type, args.pop) if args.present?
 
       # Stage 2
       norm = convert_flags(norm)
@@ -324,7 +357,7 @@ module Miscellany
       norm = convert_prefixed_keys(norm)
 
       extra_kwargs = norm.keys - PREFIXES - NON_PREFIXED
-      raise ArgumentError, "Unrecognized postitional arguments: #{args.inspect}" if args.present?
+      raise ArgumentError, "Unrecognized positional arguments: #{args.inspect}" if args.present?
       raise ArgumentError, "Unrecognized keyword arguments: #{extra_kwargs.inspect}" if extra_kwargs.present?
 
       norm

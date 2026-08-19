@@ -1,4 +1,88 @@
 require 'spec_helper'
+require 'action_controller'
+
+RSpec.describe Miscellany::HttpErrorHandling do
+  # Captures what the concern hands to `render` instead of driving a real response.
+  controller_class = Class.new(ActionController::Base) do
+    include Miscellany::HttpErrorHandling
+
+    attr_reader :rendered
+
+    def render(**kwargs)
+      @rendered = kwargs
+    end
+  end
+
+  let(:controller) { controller_class.new }
+
+  def rendered_for(err, **kwargs)
+    controller.render_http_error(err, **kwargs)
+    controller.rendered
+  end
+
+  describe '#render_http_error' do
+    it 'renders an HttpError with its own status, message, and extra' do
+      err = Miscellany::HttpErrorHandling::HttpError.new('nope', status: 422, code: 'E_NOPE')
+      expect(rendered_for(err)).to eq(
+        json: { status: 422, message: 'nope', code: 'E_NOPE' },
+        status: 422,
+      )
+    end
+
+    it 'defaults to 400 when no status is available' do
+      expect(rendered_for(Miscellany::HttpErrorHandling::HttpError.new('nope'))[:status]).to eq 400
+    end
+
+    # Reached by `rescue_with_http_error`, which passes ordinary exceptions.
+    it 'renders a plain StandardError that carries no extra' do
+      expect(rendered_for(StandardError.new('boom'), status: 422)).to eq(
+        json: { status: 422, message: 'boom' },
+        status: 422,
+      )
+    end
+
+    # The idiom ParamValidator's docs recommend: field errors must reach the client
+    # as their own key, not folded into the message string.
+    it 'carries structured field errors through as extra' do
+      errors = { 'search_term' => ['must be at least 3 characters'] }
+      err = Miscellany::HttpErrorHandling::HttpError.new(
+        'invalid parameters', status: 422, parameter_errors: errors
+      )
+      expect(rendered_for(err)).to eq(
+        json: { status: 422, message: 'invalid parameters', parameter_errors: errors },
+        status: 422,
+      )
+    end
+
+    it 'prefers an explicit message over the exception message' do
+      expect(rendered_for(StandardError.new('boom'), message: 'friendlier')[:json][:message])
+        .to eq 'friendlier'
+    end
+  end
+
+  describe '.http_error' do
+    it 'resolves a Proc message against the exception' do
+      handler = controller_class.http_error(422, ->(err) { "custom: #{err.message}" })
+      controller.instance_exec(StandardError.new('boom'), &handler)
+      expect(controller.rendered).to eq(
+        json: { status: 422, message: 'custom: boom' },
+        status: 422,
+      )
+    end
+
+    it 'accepts the message as a block' do
+      handler = controller_class.http_error(422) { |err| "blocky: #{err.message}" }
+      controller.instance_exec(StandardError.new('boom'), &handler)
+      expect(controller.rendered[:json][:message]).to eq 'blocky: boom'
+    end
+
+    it 'lets an HttpError keep its own status rather than the handler default' do
+      handler = controller_class.http_error(500)
+      controller.instance_exec(Miscellany::HttpErrorHandling::HttpError.new('nope', status: 404), &handler)
+      expect(controller.rendered[:status]).to eq 404
+    end
+  end
+end
 
 RSpec.describe Miscellany::HttpErrorHandling::HttpError do
   it 'defaults to a blank message, no status, and no extra' do
